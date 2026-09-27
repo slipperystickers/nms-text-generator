@@ -12,9 +12,15 @@ MAX_INPUT = 2000
 FONTS = (('FUTURE_Z','Boundary','glyphs.json'),
          ('INDUSTRIAL','Bulkhead','fonts/industrial.json'),
          ('ORBITAL','Orbit','fonts/orbital.json'),
-         ('FOUNDRY','Forge','fonts/foundry.json'))
+         ('FOUNDRY','Forge','fonts/foundry.json'),
+         ('VECTOR','Vector','fonts/vector.json'))
 
-@lru_cache(maxsize=4)
+# Optical side-bearing correction, in reference-height units. Y's full-width
+# tips need less spacing than its largely empty lower half suggests. Keep the
+# geometry intact and never consume more than half the gap on either side.
+OPTICAL_BEARINGS = {'VECTOR': {'Y': .3}}
+
+@lru_cache(maxsize=None)
 def library(font='FUTURE_Z'):
     paths={key:path for key,name,path in FONTS}
     if font not in paths:
@@ -61,17 +67,20 @@ def plan(text, height=5.0, letter_gap=1.0, word_gap=3.0, line_gap=1.5, alignment
     for line_index, line in enumerate(text.split('\n')):
         x = 0.0
         row = []
-        previous_glyph = False
+        previous_glyph = None
         for c in line:
             if c == ' ':
                 x += word_gap
-                previous_glyph = False
+                previous_glyph = None
                 continue
             if previous_glyph:
-                x += letter_gap
+                bearings = OPTICAL_BEARINGS.get(font, {})
+                correction = sum(min(letter_gap/2, bearings.get(g, 0)*scale)
+                                 for g in (previous_glyph, c))
+                x += letter_gap - correction
             row.append({'char':c, 'x':x, 'y':-line_index*(height+line_gap), 'line':line_index})
             x += data['widths'][c]*scale
-            previous_glyph = True
+            previous_glyph = c
             part_count += len(data['glyphs'][c])
         widths.append(x)
         shift = 0 if alignment == 'LEFT' else -x/2 if alignment == 'CENTER' else -x

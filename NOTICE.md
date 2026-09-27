@@ -39,3 +39,19 @@ Do not infer permission to extract a general-purpose font from this project.
 
 Compatibility IDs (`FUTURE_Z`, `INDUSTRIAL`, `ORBITAL`, `FOUNDRY`) and preview
 filenames retain development names so previously saved signs remain editable.
+
+Vector (`VECTOR`) uses **Orbitron by The Orbitron Project Authors** as a visual
+baseline, with user-requested adaptations based on a supplied handmade ship-title
+reference. The panel recipes include custom letter forms and construction
+approximations; the Vector name does not claim authorship of Orbitron or endorsement.
+The reference font's copyright notice identifies Copyright 2018 The Orbitron
+Project Authors and Reserved Font Name "Orbitron", under SIL Open Font License 1.1.
+No Orbitron font file, extracted font outlines, or reference screenshot is bundled.
+
+The supplied handmade Tyndustrial lettering by Tyrellixx also informed Vector's
+C return terminals and the optional Storage Panel back-face construction. The
+supplied Blender scene is not bundled in the add-on.
+
+Reference project: https://github.com/theleagueof/orbitron
+
+Reference source and license: https://github.com/google/fonts/tree/main/ofl/orbitron

@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'NMS Text Generator for Blender Base Builder',
     'author': 'Kengo / Codex',
-    'version': (1, 4, 0),
+    'version': (1, 6, 0),
     'blender': (5, 1, 0),
     'location': '3D View > Sidebar > NMS Text',
     'description': 'Approved native-part lettering through NMS Base Builder; separate sidebar tab',
@@ -22,13 +22,14 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty
 from bpy_extras.io_utils import ExportHelper
 from mathutils import Matrix, Vector
 
-from . import layout
+from . import layout, panels
 
 OWNER = 'nms_text_owner'
 ROOT = 'nms_text_root'
 CONFIG = 'nms_text_config'
 SEQUENCE = 'nms_text_sequence'
-FIELDS = ('font', 'text', 'height', 'letter_gap', 'word_gap', 'line_gap', 'alignment', 'orientation', 'face_offset', 'palette')
+FIELDS = ('font', 'panel_type', 'text', 'height', 'letter_gap', 'word_gap', 'line_gap', 'alignment', 'orientation', 'face_offset', 'palette')
+LEGACY_DEFAULTS = {'font': 'FUTURE_Z', 'panel_type': panels.DEFAULT}
 _previews = None
 _font_items = []
 _settings_lock = False
@@ -54,7 +55,7 @@ def load_settings(settings,config):
     _settings_lock=True
     try:
         for key in FIELDS:
-            setattr(settings,key,config.get(key,'FUTURE_Z') if key=='font' else config[key])
+            setattr(settings,key,config.get(key,LEGACY_DEFAULTS.get(key)) if key in LEGACY_DEFAULTS else config[key])
     finally:
         _settings_lock=False
 
@@ -70,15 +71,29 @@ def fully_selected_root(context):
     return None
 
 def font_changed(settings,context):
+    queue_style_change(settings,context,'font')
+
+
+def panel_changed(settings,context):
+    queue_style_change(settings,context,'panel_type')
+
+
+def queue_style_change(settings,context,field):
     global _pending_font
     if _settings_lock or not settings.auto_font or context is None:return
     root=fully_selected_root(context)
     if root is None:return
-    current=json.loads(root[CONFIG]).get('font','FUTURE_Z')
-    if current==settings.font:
+    config=json.loads(root[CONFIG])
+    current=(config.get('font','FUTURE_Z'),config.get('panel_type',panels.DEFAULT))
+    identity=(root.name,root.get(OWNER),root[CONFIG])
+    desired=list(_pending_font[3:5] if _pending_font and _pending_font[:3]==identity else current)
+    desired[0 if field=='font' else 1]=getattr(settings,field)
+    if current==tuple(desired):
         _pending_font=None
         return
-    _pending_font=(root.name,root.get(OWNER),root[CONFIG],settings.font)
+    # Only apply the control actually changed, not stale settings from another
+    # sign. Coalesce rapid font + part changes while retaining the saved text.
+    _pending_font=identity+tuple(desired)+(settings.font,settings.panel_type)
     # Defer object mutations out of the RNA update callback. An operator gives
     # the rebuild its own undo step and runs on Blender's main thread.
     if not bpy.app.timers.is_registered(apply_pending_font):
@@ -89,15 +104,15 @@ def apply_pending_font():
     pending=_pending_font
     _pending_font=None
     if not pending or not hasattr(bpy.context.scene,'nms_text_settings'):return None
-    name,owner,original,font=pending
+    name,owner,original,font,panel_type,observed_font,observed_panel=pending
     root=fully_selected_root(bpy.context)
     settings=bpy.context.scene.nms_text_settings
     if (root is None or root.name!=name or root.get(OWNER)!=owner or
-            root[CONFIG]!=original or settings.font!=font or not settings.auto_font):return None
+            root[CONFIG]!=original or settings.font!=observed_font or settings.panel_type!=observed_panel or not settings.auto_font):return None
     try:
-        bpy.ops.nms_text.change_font('EXEC_DEFAULT',font=font)
+        bpy.ops.nms_text.change_font('EXEC_DEFAULT',font=font,panel_type=panel_type)
     except Exception as exc:
-        settings.edit_status='Font change failed: '+str(exc)
+        settings.edit_status='Font / panel change failed: '+str(exc)
     return None
 
 def font_items(self,context):
@@ -113,7 +128,7 @@ def load_previews():
         preview=Path(__file__).parent/'previews'/(key.lower()+'.png')
         if preview.exists():
             icon=_previews.load(key,str(preview),'IMAGE').icon_id
-        _font_items.append((key,name,name+' — native Flat Panels, A-Z and 0-9',icon,index))
+        _font_items.append((key,name,name+' — native panels, A-Z and 0-9',icon,index))
 
 def dependency_name():
     for name in bpy.context.preferences.addons.keys():
@@ -121,7 +136,7 @@ def dependency_name():
             return name
     return None
 
-def get_builder():
+def get_builder(part_id=panels.DEFAULT):
     name = dependency_name()
     if not name:
         raise ValueError('Enable No Man\'s Sky Base Builder in Preferences > Add-ons first.')
@@ -132,7 +147,7 @@ def get_builder():
     if not all(hasattr(b,k) for k in ('add_part','Part','BUILDER','get_asset_index')):
         raise ValueError('This Base Builder version lacks the required native-part API.')
     index = b.get_asset_index()
-    missing = {'BUILDFLATPANEL'} - set(index)
+    missing = {panels.validate(part_id)} - set(index)
     if missing:
         raise ValueError('Base Builder is missing textured native assets: ' + ', '.join(sorted(missing)))
     return b
@@ -192,7 +207,10 @@ def select_parts(context, root):
 
 def create_text(context, config, matrix=None, user_data=None):
     """Build into a fresh collection; remove only new objects on failure."""
-    b = get_builder()
+    config = dict(config)
+    config.setdefault('panel_type',panels.DEFAULT)
+    part_id = panels.validate(config['panel_type'])
+    b = get_builder(part_id)
     plan = make_plan(config)
     user_data = active_palette(context,config) if user_data is None else user_data
     matrix = placement_matrix(context,config['orientation']) if matrix is None else matrix.copy()
@@ -225,14 +243,15 @@ def create_text(context, config, matrix=None, user_data=None):
             offset = Matrix.Translation((placement['x'],placement['y'],config['face_offset']))
             for record in font_data['glyphs'][placement['char']]:
                 # add_part is the same API used by Base Builder's asset browser.
-                part = b.add_part(record['ObjectID'],user_data=user_data,build_rigs=False,high_res=True)
+                part = b.add_part(part_id,user_data=user_data,build_rigs=False,high_res=True)
                 obj = part.object
                 for old_collection in list(obj.users_collection):
                     old_collection.objects.unlink(obj)
                 collection.objects.link(obj)
                 obj.parent = root
                 obj.matrix_parent_inverse = Matrix.Identity(4)
-                obj.matrix_basis = offset @ scale @ b.Part.create_matrix_from_vectors(record['Position'],record['Up'],record['At'])
+                native_matrix = b.Part.create_matrix_from_vectors(record['Position'],record['Up'],record['At'])
+                obj.matrix_basis = offset @ scale @ panels.from_flat_matrix(native_matrix,part_id)
                 obj[OWNER] = uid
                 obj[SEQUENCE] = sequence
                 obj['nms_text_character'] = placement['char']
@@ -309,14 +328,15 @@ def export_data(root):
     for obj in parts:
         check_matrix(obj.matrix_world)
         # Legacy 1.0 signs remain exportable until explicitly replaced.
-        if obj.get('ObjectID') not in ('BUILDFLATPANEL','CUBEWALL'):
+        if obj.get('ObjectID') not in ('BUILDFLATPANEL','STORAGEPANEL','CUBEWALL'):
             raise ValueError('A managed part has an unexpected native item ID.')
         records.append(b.Part.deserialise_from_object(obj,b.BUILDER).serialise())
     return {'BaseVersion':5,'Objects':records}
 
 class NMSTEXT_Settings(bpy.types.PropertyGroup):
     font: EnumProperty(name='Font',items=font_items,default=0,update=font_changed,description='Choose a font; auto-switch rebuilds a fully selected sign')
-    auto_font: BoolProperty(name='Auto-switch selected text',default=True,update=auto_switch_toggled,description='Changing Font rebuilds one fully selected sign. Manual panel edits are replaced; Ctrl-Z undoes it')
+    panel_type: EnumProperty(name='Panel type',items=panels.ITEMS,default=panels.DEFAULT,update=panel_changed,description='Native item used for each piece; Storage uses its plain back. Same layout and count')
+    auto_font: BoolProperty(name='Auto-switch selected text',default=True,update=auto_switch_toggled,description='Changing Font or Panel type rebuilds one fully selected sign. Manual panel edits are replaced; Ctrl-Z undoes it')
     auto_font_initialized: BoolProperty(default=False,options={'HIDDEN'})
     edit_status: StringProperty(options={'SKIP_SAVE'})
     text: StringProperty(name='Text',default='CCB',maxlen=layout.MAX_INPUT,description='A-Z and 0-9. Lowercase converts to uppercase. Type \\n for another line')
@@ -351,6 +371,7 @@ class NMSTEXT_OT_change_font(bpy.types.Operator):
     bl_label='Change NMS Text Font'
     bl_options={'REGISTER','UNDO'}
     font: EnumProperty(items=font_items,default=0)
+    panel_type: EnumProperty(items=(('KEEP','Keep panel type','Preserve the current native item'),)+panels.ITEMS,default='KEEP')
     @classmethod
     def poll(cls,context):return fully_selected_root(context) is not None
     def execute(self,context):
@@ -358,15 +379,16 @@ class NMSTEXT_OT_change_font(bpy.types.Operator):
         if root is None:return {'CANCELLED'}
         config=json.loads(root[CONFIG])
         config['font']=self.font
+        config['panel_type']=config.get('panel_type',panels.DEFAULT) if self.panel_type=='KEEP' else self.panel_type
         config['palette']='DEFAULT'
         try:
             replace_text(context,root,config)
             load_settings(context.scene.nms_text_settings,config)
-            context.scene.nms_text_settings.edit_status='Font updated. Ctrl-Z to undo.'
+            context.scene.nms_text_settings.edit_status='Font / panel type updated. Ctrl-Z to undo.'
             return {'FINISHED'}
         except Exception as exc:
             load_settings(context.scene.nms_text_settings,json.loads(root[CONFIG]))
-            context.scene.nms_text_settings.edit_status='Font change failed: '+str(exc)
+            context.scene.nms_text_settings.edit_status='Font / panel change failed: '+str(exc)
             self.report({'ERROR'},str(exc))
             return {'CANCELLED'}
 
@@ -391,6 +413,7 @@ class NMSTEXT_OT_edit(bpy.types.Operator):
         self.owner=root.get(OWNER)
         config=json.loads(root[CONFIG])
         config.setdefault('font','FUTURE_Z')
+        config.setdefault('panel_type',panels.DEFAULT)
         config['palette']='DEFAULT'
         for key in FIELDS:setattr(self,key,config[key])
         return context.window_manager.invoke_props_dialog(self,width=420)
@@ -398,6 +421,7 @@ class NMSTEXT_OT_edit(bpy.types.Operator):
         ui=self.layout
         ui.prop(self,'text')
         ui.prop(self,'font')
+        ui.prop(self,'panel_type')
         ui.template_icon_view(self,'font',show_labels=True,scale=6,scale_popup=7)
         for key in ('height','alignment','letter_gap','word_gap','line_gap','face_offset','palette'):
             ui.prop(self,key)
@@ -514,12 +538,13 @@ class NMSTEXT_PT_panel(bpy.types.Panel):
             box=ui.box()
             box.alert=True
             box.label(text='Enable NMS Base Builder first.',icon='ERROR')
-        ui.label(text='Flat Panels only - v1.4.0')
+        ui.label(text='Native panel lettering - v1.6.0')
         ui.prop(settings,'auto_font')
         ui.prop(settings,'font')
+        ui.prop(settings,'panel_type')
         ui.template_icon_view(settings,'font',show_labels=True,scale=6.0,scale_popup=7.0)
         if settings.auto_font and fully_selected_root(context):
-            ui.label(text='Font changes rebuild this selected sign.',icon='INFO')
+            ui.label(text='Font / panel changes rebuild this sign.',icon='INFO')
         if settings.edit_status:
             for line in textwrap.wrap(settings.edit_status,42):ui.label(text=line)
         ui.prop(settings,'text')

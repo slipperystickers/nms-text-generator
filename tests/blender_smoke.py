@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import addon_utils,bpy
 
+assert bpy.app.background, 'Run this test in a separate background Blender process.'
 ROOT=Path(__file__).resolve().parents[1]
 if '--installed' not in sys.argv:sys.path.insert(0,str(ROOT))
 base='bl_ext.user_default.no_mans_sky_base_builder'
@@ -11,7 +12,7 @@ addon_utils.enable(base,default_set=True)
 import nms_text_generator as a
 a.register()
 c=bpy.context;s=c.scene.nms_text_settings
-assert a.bl_info['version']==(1,4,0)
+assert a.bl_info['version']==(1,6,0)
 assert s.auto_font
 assert a.NMSTEXT_PT_panel.bl_category=='NMS Text'
 s['auto_font']=False;a.initialize_auto_switch();assert s.auto_font
@@ -64,8 +65,8 @@ args={k:getattr(dialog,k) for k in a.FIELDS}
 assert bpy.ops.nms_text.edit('EXEC_DEFAULT',root_name=dialog.root_name,owner=dialog.owner,**args)=={'FINISHED'}
 assert root.matrix_world==matrix and 'EDIT 123' in root.name
 assert extra.name in bpy.data.objects
-legacy=json.loads(root[a.CONFIG]);legacy.pop('font');root[a.CONFIG]=json.dumps(legacy)
-assert bpy.ops.nms_text.load_settings()=={'FINISHED'} and s.font=='FUTURE_Z'
+legacy=json.loads(root[a.CONFIG]);legacy.pop('font');legacy.pop('panel_type');root[a.CONFIG]=json.dumps(legacy)
+assert bpy.ops.nms_text.load_settings()=={'FINISHED'} and s.font=='FUTURE_Z' and s.panel_type=='BUILDFLATPANEL'
 # Restore before undo test.
 legacy['font']='FOUNDRY';root[a.CONFIG]=json.dumps(legacy);a.load_settings(s,legacy)
 c.preferences.edit.use_global_undo=True
@@ -76,10 +77,19 @@ find=lambda:next(o for o in bpy.data.objects if o.get(a.ROOT) and o.get(a.OWNER)
 assert json.loads(find()[a.CONFIG])['font']=='FOUNDRY'
 assert bpy.ops.ed.redo()=={'FINISHED'}
 assert json.loads(find()[a.CONFIG])['font']=='INDUSTRIAL'
+# Switch an existing sign into the new font, then persist and re-edit it.
+root=find();a.select_parts(bpy.context,root)
+s=bpy.context.scene.nms_text_settings
+s.font='VECTOR';a.apply_pending_font()
+assert json.loads(root[a.CONFIG])['font']=='VECTOR'
+config=json.loads(root[a.CONFIG]);config['text']='AVWD RKYX 47'
+assert bpy.ops.nms_text.edit('EXEC_DEFAULT',root_name=root.name,owner=uid,**config)=={'FINISHED'}
+assert root['nms_text_library']=='Vector'
 with tempfile.TemporaryDirectory(prefix='nms-text-smoke-') as folder:
     file=Path(folder)/'test.blend'
     bpy.ops.wm.save_as_mainfile(filepath=str(file));bpy.ops.wm.open_mainfile(filepath=str(file))
     root=find();a.select_parts(bpy.context,root)
     assert a.NMSTEXT_OT_edit.poll(bpy.context)
+    assert json.loads(root[a.CONFIG])['font']=='VECTOR'
 a.unregister();a.register();a.unregister()
 print('ALL_NATIVE_TESTS_PASSED',bpy.app.version_string,flush=True)

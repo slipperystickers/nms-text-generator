@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.6.0 — 2026-09-26
+
+- First public release of Vector, the fifth A-Z/0-9 lettering style, including
+  the refinements developed in the private 1.5.x builds below.
+
+- Added a native Panel type choice: Flat Panels or the plain back of Storage
+  Panels. Both use positive uniform scaling, unchanged game meshes and the same
+  glyph layout/part count. No tilted-face construction is used.
+- Panel choice is saved per sign, supported in right-click Edit NMS Text, and
+  auto-switches one fully selected sign using the same safeguards as Font.
+  Old signs default to Flat Panels; loading/installing never rebuilds them.
+- Integrated the coplanar Vector overlap optimization: 626 parts for A-Z/0-9,
+  at most 32 per character. TYNDUSTRIAL ASTRONAUTICS now uses 367 parts, including
+  the corrected 23-part C with paired inward-facing terminals.
+- Preserved the narrow I advance and Y optical spacing. Storage back faces are
+  aligned to the Flat Panel surface and fitted within its reference footprint;
+  the tiny native aspect-ratio difference is not corrected by stretching.
+- Blender/export checks do not establish in-game loading performance. No claim
+  that one part type loads faster than the other.
+- Expanded the user guide for panel switching, updating existing signs, and
+  hiding Blender's relationship lines without removing the text control.
+
+## 1.5.2 — private development build
+
+- Tightened Vector Y's adjacent letter gaps by 0.3 units per side at height 5.
+  This is optical spacing: the full-width letter geometry is unchanged.
+- Corrections scale with letter height and are capped at half the configured
+  gap per side, preventing overlap at small or zero gaps. Word spaces and
+  other fonts are unchanged. Regenerate existing text to update its spacing.
+- Part-count optimization is still experimental and is not included.
+
+## 1.5.1 — private development build
+
+- Removed Vector I's full-cell side padding; it now advances by its actual
+  0.64-unit width plus the configured letter gap.
+- Other glyph geometry, widths and part counts are unchanged. Existing signs
+  receive corrected spacing when regenerated or confirmed through Edit NMS Text.
+- Added scaled/aligned spacing regression tests. Part-count optimization remains
+  a separate research experiment and is not included in this package.
+
+## 1.5.0 — private development build
+
+- Added Vector as a fifth independent style, with a native-part thumbnail preview.
+- Includes the approved matched-width/stroke alphabet, custom pointed terminals,
+  softer D, corner-matched 4 and upright Orbitron-style 7.
+- Existing font IDs and default remain unchanged; Vector supports the existing
+  auto-switch, right-click editing, save/reopen and native export workflows.
+- Added full-library, part-budget and native workflow regression coverage.
+
 ## 1.4.0 — initial public package
 
 - Display names: Boundary, Bulkhead, Orbit and Forge, with stable saved-file IDs.

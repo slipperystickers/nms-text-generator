@@ -1,7 +1,7 @@
 # NMS Text Generator — complete user guide
 
 This add-on makes editable NMS panel lettering, not Blender text meshes.
-Each sign is a collection of real Flat Panels with a parent control and stored
+Each sign is a collection of real Flat Panels or Storage Panels with a parent control and stored
 text settings. Only the front silhouette is intended to show; bury the rear
 geometry in a mounting surface.
 
@@ -12,7 +12,7 @@ geometry in a mounting surface.
 - [Styles and previews](#styles-and-previews)
 - [Text and layout settings](#text-and-layout-settings)
 - [Orientation and mounting](#orientation-and-mounting)
-- [Automatic font switching](#automatic-font-switching)
+- [Automatic font and panel switching](#automatic-font-and-panel-switching)
 - [Edit a completed sign](#edit-a-completed-sign)
 - [Move and organize signs](#move-and-organize-signs)
 - [Colours and materials](#colours-and-materials)
@@ -29,6 +29,7 @@ Tested with **Blender 5.1.2 for Windows** and the **18.0.8 Base Builder installa
 used in development. This is not a compatibility guarantee for every build carrying
 that version number. The dependency must expose `builder_v2.add_part`, `Part`,
 `BUILDER`, `get_asset_index`, and the textured high-resolution `BUILDFLATPANEL`.
+The optional Storage Panel mode additionally requires `STORAGEPANEL`.
 Other operating systems and dependency builds are not yet verified.
 
 Base Builder must be installed separately. The text generator does not contain
@@ -38,7 +39,7 @@ system fonts, an online account, or additional Python packages to use the genera
 ### Installation steps
 
 1. Install and enable the compatible **No Man's Sky Base Builder** first.
-2. Download the installable **NMS_Text_Generator_1.4.0.zip** from the project's
+2. Download the installable **NMS_Text_Generator_<version>.zip** from the project's
    Releases page. GitHub's automatic Source code ZIP is not the installer.
 3. Open **Edit > Preferences > Add-ons** in Blender.
 4. Open the menu at the top-right of the add-on list and choose **Install from Disk**.
@@ -74,6 +75,7 @@ made, use the font-switching or editing workflows below.
 | Bulkhead | Industrial Block | Squared utility lettering |
 | Orbit | Orbital Octagon | Wide geometric lettering with chamfered corners |
 | Forge | Foundry Slab | Rectangular slab serifs and contrasting stroke widths |
+| Vector | Orbitron-inspired ship study | Matched-width technical lettering with custom flat-capped diagonals and a softer D |
 
 Use the **Font dropdown**, or click the preview tile beneath it to open the
 thumbnail picker. Both controls change the same setting. The thumbnails show
@@ -82,6 +84,38 @@ fixed `ABC / 123` samples rendered from native parts, not your current text.
 Each style includes A-Z and 0-9. These are predefined placements, not arbitrary
 TTF/OTF conversion. No system font installation is needed. Some glyphs intentionally
 share shapes, including O and zero. See NOTICE.md for credits and reference provenance.
+
+**Vector:** select Vector from the same Font dropdown or thumbnail picker. It
+supports automatic switching and right-click editing just like the other styles.
+The letter bodies use a common width and stroke thickness; I uses its actual narrow
+width plus the normal letter gap (no extra side padding). The 1 remains centered
+in its wider cell, while Q has an external tail. Its zero is slashed and
+its 7 has an upright right stem. C has paired inward-facing return terminals.
+The coplanar overlap optimization uses 4–32 panels per character, 626 for one
+A-Z/0-9 set. `TYNDUSTRIAL ASTRONAUTICS` uses 367 panels. Watch the displayed
+part count; the 3,000-part guard still applies (93 X characters use 2,976 panels;
+94 exceed the guard).
+No system font file or additional package is required. After updating, save your
+work and restart Blender before looking for Vector.
+
+### Panel type: Flat or Storage
+
+- **Flat Panels** is the default and preserves the original native front face.
+- **Storage Panels (back)** uses the plain flat back, with the detailed front
+  buried in the mounting surface. There is no tilted-face construction.
+- This changes the item, not the glyph design, spacing or number of pieces.
+  Storage faces are uniformly scaled to fit within the Flat Panel footprint.
+  Their aspect ratios differ slightly (about 0.26%); neither asset is stretched.
+- Choose the type before Generate New Text. With Auto-switch ON and all parts
+  of exactly one sign selected, changing Panel type rebuilds it immediately.
+  As with font changes, this replaces manual edits to its generated panels.
+- From one selected panel, right-click **Edit NMS Text** to change the saved
+  panel type in the dialog. **OK** applies; **Cancel** leaves the sign unchanged.
+- Old signs default to Flat Panels. Installing an update or opening a file does
+  not regenerate existing geometry. The choice persists in the `.blend`.
+- JSON export contains the actual `^BUILDFLATPANEL` or `^STORAGEPANEL` IDs.
+  Compare loading in your own NMS build; Blender tests do not establish which
+  part type loads faster, more reliably, or identically for other players.
 
 ## Text and layout settings
 
@@ -147,7 +181,7 @@ Moving the cursor later does not move existing signs. Re-editing preserves the
 existing control transform. Use the control to rotate existing text; Orientation
 in the sidebar is used when generating new text.
 
-## Automatic font switching
+## Automatic font and panel switching
 
 **Auto-switch selected text defaults ON.** Older files are initialized to ON
 once when the migration first runs; your later ON/OFF choice is saved with the file.
@@ -155,11 +189,12 @@ once when the migration first runs; your later ON/OFF choice is saved with the f
 1. Select all panels of **one** generated sign. They are already selected just
    after generation. To select them again, click one panel, then **Select Parts**.
 2. Keep unrelated objects unselected.
-3. Change Font in the dropdown or thumbnail picker.
+3. Change Font in the dropdown or thumbnail picker, or change Panel type.
 4. The sign rebuilds automatically—no Replace button or confirmation required.
 
-This font-only operation uses that sign's **saved text, size and spacing**. It
-does not apply unrelated draft values typed into the sidebar. The control keeps
+This operation changes only the chosen font or panel type, using that sign's
+**saved text, size and spacing**. It does not apply unrelated draft values typed
+into the sidebar. The control keeps
 its position and rotation, and the new panels remain selected.
 
 Auto-switch does not run on one panel, partial selections, the control alone,
@@ -167,7 +202,7 @@ multiple signs, or mixed selections. A queued change is abandoned if selection
 changes before it can run. Use right-click editing from a single selected panel.
 
 To choose a style for a new sign without changing an existing selected sign,
-deselect it or turn Auto-switch OFF first. Only the Font selector auto-rebuilds;
+deselect it or turn Auto-switch OFF first. Only Font and Panel type auto-rebuild;
 other fields require an explicit edit/apply action.
 
 ## Edit a completed sign
@@ -225,6 +260,18 @@ Generate again for another independently editable sign. Ordinary duplication of
 managed hierarchies is not a verified replacement for Generate New Text. To mix
 styles within a phrase, use separate generated signs.
 
+### Hide the connection lines
+
+The dotted lines connecting panels to the control are Blender's **Relationship
+Lines**, not exported game objects. Open the **Viewport Overlays** dropdown
+(beside the overlapping-circles icon at the top-right of the 3D Viewport), then
+under **Objects**, uncheck **Relationship Lines**.
+
+This only changes that viewport's display. It keeps the parent control, text
+editing and native export intact, and leaves other overlays available. Do not
+unparent the panels or delete the control to remove the lines. Save the `.blend`
+to retain its viewport setting.
+
 ## Colours and materials
 
 The generator uses Base Builder's native UserData colour/material metadata,
@@ -274,7 +321,7 @@ external save tools. Blender tests do not prove in-game, console, upload-limit o
 unmodded multiplayer compatibility.
 
 Older v1.0 mixed-part signs remain exportable until explicitly rebuilt. New
-generation/replacement uses Flat Panels. Opening a file does not silently replace
+generation/replacement uses the selected panel type. Opening a file does not silently replace
 old geometry.
 
 ## Limits and worked examples
@@ -318,7 +365,8 @@ cursor position, then Generate New Text. Each sign has its own collection/contro
 | Enable NMS Base Builder first | Install/enable the dependency in this same Blender installation. |
 | Missing builder_v2 or native assets | The dependency does not provide the required API/assets. Generic geometry is not a substitute. |
 | Style changes but panels do not | Auto-switch must be ON; use Select Parts for exactly one sign, excluding unrelated objects. In the edit dialog, click OK. |
-| Typed text did not update the sign | Only Font auto-switches. Use Edit NMS Text or explicit Replace for other fields. |
+| Typed text did not update the sign | Only Font and Panel type auto-switch. Use Edit NMS Text or explicit Replace for other fields. |
+| Dotted connection lines clutter the text | In Viewport Overlays > Objects, uncheck Relationship Lines. Keep the parent control intact. |
 | No right-click Edit entry | Use Object Mode and select a panel still parented to a generated control. Plain imported JSON parts lack editable text metadata. |
 | Original text group unavailable | Restart after updating from v1.3.0; the dialog bug was fixed in v1.3.1. Also check the control/metadata was not removed. |
 | Generate unavailable | Check Object Mode, dependency, supported nonempty text, and the displayed validation message. |
@@ -343,6 +391,11 @@ code, libraries and previews. Check the version label in NMS Text.
 Style names retain stable internal IDs for older saved signs. Loading settings
 may show a new label, but geometry changes only when generated/rebuilt. Keep older
 files if you need a specific version's exact geometry.
+
+To apply the optimized Vector recipes and spacing to an older sign, select one
+panel, right-click **Edit NMS Text**, and confirm **OK**. This rebuild replaces
+manual panel edits, so keep a backup of any hand-refined lettering first. Existing
+signs are not automatically changed when you install 1.6.0.
 
 Disable/remove the generator through Preferences to uninstall. Native panels
 remain usable with Base Builder; generator-specific editing requires the generator
