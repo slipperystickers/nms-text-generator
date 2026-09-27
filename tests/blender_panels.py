@@ -27,7 +27,7 @@ native_coordinates=tuple(tuple(v.co) for v in native_mesh.vertices)
 bpy.data.objects.remove(probe,do_unlink=True)
 
 for key,_,_ in a.layout.FONTS:
-    config=dict(a.config_from_settings(settings),font=key,panel_type='STORAGEPANEL',text='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
+    config=dict(a.config_from_settings(settings),font=key,panel_type='STORAGEPANEL',text=a.layout.CHARACTERS)
     root=a.create_text(ctx,config)
     records=a.export_data(root)['Objects']
     assert len(records)==a.make_plan(config)['part_count']

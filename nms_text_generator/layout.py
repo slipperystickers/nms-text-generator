@@ -1,12 +1,15 @@
 """Deterministic glyph placement; deliberately independent of Blender."""
 import json
 import math
+import re
 import string
 from functools import lru_cache
 from pathlib import Path
 
 MAX_PARTS = 3000
 MAX_INPUT = 2000
+SYMBOLS = '-_/\\?!|[]+=:.'
+CHARACTERS = string.ascii_uppercase + string.digits + SYMBOLS
 # Stable identifiers intentionally retain their development names so existing
 # saved signs and enum values remain compatible. Only display names change.
 FONTS = (('FUTURE_Z','Boundary','glyphs.json'),
@@ -27,7 +30,7 @@ def library(font='FUTURE_Z'):
         raise ValueError('Unknown font: '+str(font))
     data = json.loads((Path(__file__).parent/paths[font]).read_text(encoding='utf-8'))
     data.setdefault('max_parts_per_character',max(map(len,data['glyphs'].values())))
-    expected = set(string.ascii_uppercase + string.digits)
+    expected = set(CHARACTERS)
     if set(data['glyphs']) != expected:
         raise ValueError('The packaged glyph library is incomplete.')
     for char, records in data['glyphs'].items():
@@ -43,14 +46,34 @@ def library(font='FUTURE_Z'):
                     raise ValueError(f'Invalid {key} for {char}.')
     return data
 
+def decode_legacy(text):
+    """One-time conversion of pre-1.7.1 saved escape-based text."""
+    result = []
+    i = 0
+    while i < len(text):
+        if text[i] == '\\' and i + 1 < len(text) and text[i + 1] in ('\\', 'n'):
+            result.append('\\' if text[i + 1] == '\\' else '\n')
+            i += 2
+        else:
+            result.append(text[i])
+            i += 1
+    return ''.join(result).replace('\r\n', '\n').replace('\r', '\n')
+
+
+def field_text(text):
+    """Display older multiline settings in the single sidebar field."""
+    return text.replace('\r\n','\n').replace('\r','\n').replace('\n','<br>')
+
+
 def normalize(text):
     if len(text) > MAX_INPUT:
         raise ValueError(f'Text input is limited to {MAX_INPUT} characters.')
-    text = text.replace('\\n', '\n').replace('\r\n', '\n').replace('\r', '\n')
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
     text = ''.join(c.upper() if c in string.ascii_lowercase else c for c in text)
-    bad = sorted(set(text) - set(string.ascii_uppercase + string.digits + ' \n'))
+    bad = sorted(set(text) - set(CHARACTERS + ' \n'))
     if bad:
-        raise ValueError('Unsupported characters: ' + ', '.join(repr(c) for c in bad) + '. Use A-Z, 0-9, spaces and line breaks.')
+        raise ValueError('Unsupported characters: ' + ', '.join(repr(c) for c in bad) + '. Use A-Z, 0-9, - _ / \\ ? ! | [ ] + = : ., spaces and line breaks.')
     return text
 
 def plan(text, height=5.0, letter_gap=1.0, word_gap=3.0, line_gap=1.5, alignment='LEFT', font='FUTURE_Z'):
@@ -88,7 +111,7 @@ def plan(text, height=5.0, letter_gap=1.0, word_gap=3.0, line_gap=1.5, alignment
             p['x'] += shift
         placements.extend(row)
     if not placements:
-        raise ValueError('Enter at least one letter or number.')
+        raise ValueError('Enter at least one letter, number or supported symbol.')
     if part_count > MAX_PARTS:
         raise ValueError(f'{part_count:,} parts exceeds the {MAX_PARTS:,}-part safety limit. Generate smaller sections.')
     return {'text':text, 'placements':placements, 'scale':scale, 'part_count':part_count,

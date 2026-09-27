@@ -1,5 +1,108 @@
 # Changelog
 
+## 2.0.0 — First official NMScribe launch
+
+- Publish the NMScribe identity and approved branding, with five lettering styles and thirteen special characters.
+- Launch contour-first SVG Icon / Sticker mode with accuracy/part-limit controls and editable native-part collections.
+- Default both modes to Storage Panels (back), while preserving existing creations and Flat Panel support.
+- Ship the complete offline instruction page and updated installation, editing, mounting and export guide.
+- Keep Base Builder compatibility with or without Charon Forge; neither dependency is modified.
+
+## 1.8.2 — Local launch candidate
+
+- Storage Panels (back) is now the default for fresh Text and Icon / Sticker settings.
+- Preserve saved panel choices and the Flat Panel fallback for old signs without panel metadata; no automatic conversion of existing geometry.
+- Include a branded, self-contained offline instruction page, the full Markdown guide, and launch notes.
+- Carry forward the contour-first SVG fitter, declaration import fix, five lettering styles, symbol support and approved NMScribe branding.
+
+## 1.8.1 — Contour-first SVG fitting
+
+- Accept ordinary Illustrator/W3C SVG DOCTYPE declarations without fetching external resources; keep custom entities/internal DTDs blocked.
+- Replace the four-angle, area-first outline with vector-contour panels at arbitrary rotations, followed by overlapping interior fill.
+- Remove hidden boundaries between overlapping SVG shapes and guard fill panels against crossing outlines or holes.
+- Cover concave joins with safe inward overlaps and account for native inset faces during interior cleanup.
+- Show outline/fill part counts and distinguish budget-driven simplification from an incomplete fill. Existing icons can be rebuilt with Update Selected Icon; text fonts are unchanged.
+- Locally tested with the supplied Rebel Alliance and paw-print SVGs and real native Blender panels. Game validation remains separate.
+
+## 1.8.0 — Experimental SVG icon/sticker mode
+
+- Text / Icon mode switch immediately below the unchanged branding header.
+- Offline SVG silhouette import with an accuracy slider, hard panel limit, fitted preview, and sampled coverage readout.
+- Generates unmodified native Flat Panels or Storage Panels with uniform scales and coplanar front faces.
+- Icons have separate collections and controls, saved SVG source, re-edit/update, undo and native JSON export. Text fonts are unchanged.
+- Unsupported SVG features fail clearly; external resources and scripts are never loaded. This is approximate single-colour geometry, not a multicolour decal or exact curve converter.
+
+## 1.7.9 — Measured header alignment
+
+- Registered the Paint reference and Blender screenshot by their branding boxes to measure layout offsets.
+- Corrected emblem size, title/credit position, and excess vertical spacing without regenerating the artwork.
+
+## 1.7.8 — Paint-reference alignment
+
+- Added top padding and nudged the slightly enlarged emblem up and right to follow the supplied Paint mockup.
+- Preserved the approved artwork, typeset credit and premultiplied transparency.
+
+## 1.7.7 — banner balance
+
+- Reduced emblem size by 15 percent and the emblem/wordmark gap by one third.
+- Centered the emblem vertically against the title and credit together; retained original artwork and transparency handling.
+
+## 1.7.6 — banner spacing and credit
+
+- Separated the emblem and wordmark with whitespace equal to half the emblem width.
+- Enlarged the right-aligned typeset credit beneath the wordmark. No artwork regeneration or added decoration.
+
+## 1.7.5 — original artwork and typeset credit
+
+- Rebuilt the credit from the original approved artwork using conventional text rendering; original pixels outside the credit are unchanged.
+- Added a Lanczos-filtered sidebar image instead of sampling the full-resolution logo directly at icon size.
+- Use display-encoded RGB for the UI preview and preserve transparent alpha.
+- Convert straight PNG alpha to premultiplied UI preview alpha, removing bright jagged fringes.
+
+## 1.7.4 — continuous banner
+
+- Removed the five-tile logo display that broke the artwork at icon boundaries.
+- Display one continuous, top-aligned banner in a compact reserved row.
+- Put the smaller author/year credit inside the graphic under the wordmark; removed the separate credit label.
+- Retained deferred, failure-tolerant startup loading.
+
+## 1.7.3 — startup fix
+
+- Defer banner image datablock access until after add-on registration, fixing the missing tab on normal Blender startup.
+- Banner failures now fall back to the text title without disabling the tool.
+- Added restricted-registration and installed-startup regression checks.
+
+## 1.7.2 — NMScribe local review
+
+- Added the approved amber paneled NMScribe banner and right-aligned author/year credit. Sidebar tab stays NMS Text.
+- Restored a normal single text field in the sidebar and re-edit dialog. No separate text-entry pop-out.
+- Added case-insensitive `<br>`, `<br/>`, and `<br />` line breaks. Backslashes remain literal; other HTML is not supported.
+- Older multiline signs display line breaks as `<br>` when loaded for editing without changing their rendered layout.
+
+## 1.7.1 — local UI review
+
+- App-first NMS Text header with a temporary Blender text icon, publication year,
+  FuriousFurby (FF) credit and subtle CCB community donation credit.
+- Removed the Furby badge and sidebar role-required notice; kept the CCB button.
+- Added focused multiline text entry with Shift+Enter, literal backslashes,
+  copy/paste, selection, navigation, undo/redo and cancel-safe drafts.
+- Preserved old saved signs through versioned one-time escape conversion.
+- Right-click editing stages text first, then the existing layout dialog; no
+  generated panels change unless the final layout dialog is confirmed.
+
+## 1.7.0 — local review build
+
+- Added native-panel `- _ / \ ? ! | [ ] + = : .` to Boundary, Bulkhead, Orbit, Forge and
+  Vector, with style-matched stroke widths and individual advances.
+- Refined brackets, slashes and bars to 112% cap height, centered vertically;
+  shortened hyphens by 20% without changing stroke thickness.
+- Preserved every approved A-Z/0-9 placement and width, including Vector spacing.
+- Added a literal-backslash escape (`\\`); existing `\n` multiline text still works.
+- Added the FuriousFurby badge, creator credit, CCB community credit and an
+  optional Discord invite button with the Traveller Toolkit role requirement.
+- Added reproducible full 49-character reference scenes and silhouette sheets.
+- No changes to Base Builder or Charon Forge; neither dependency is bundled.
+
 ## 1.6.1 — compatibility update
 
 - Added support for official Base Builder 7.0.0 and Charon Forge 0.1.0, using

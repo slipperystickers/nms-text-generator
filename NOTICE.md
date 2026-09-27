@@ -2,6 +2,10 @@
 
 ## Plugin code
 
+The sidebar uses the approved NMScribe amber/ivory logo and creator credit.
+The prior creator-supplied FuriousFurby badge is not included in this installer.
+The code license does not imply endorsement of derivatives by FuriousFurby or CCB.
+
 Copyright (C) 2026 FuriousFurby and contributors.
 
 The Python code and original documentation in this project are distributed under

@@ -12,6 +12,9 @@ ITEMS = (
     ('STORAGEPANEL', 'Storage Panels (back)', 'Plain square-cornered back face; same part count and layout'),
 )
 DEFAULT = 'BUILDFLATPANEL'
+# Keep the historical recipe/calibration fallback above stable. Only fresh UI
+# settings use Storage; saved and pre-selector signs must remain Flat Panels.
+NEW_DEFAULT = 'STORAGEPANEL'
 FLAT_FACE_Y = 0.2915039658546448
 FLAT_FOOTPRINT = (3.0078125, 1.260742425918579)
 STORAGE_FACE_CENTER = (-0.02734375, 0.0, 0.0283203125)

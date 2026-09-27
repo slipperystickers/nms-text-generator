@@ -1,14 +1,22 @@
-# NMS Text Generator — complete user guide
+# NMScribe — complete user guide
 
-This add-on makes editable NMS panel lettering, not Blender text meshes.
-Each sign is a collection of real Flat Panels or Storage Panels with a parent control and stored
-text settings. Only the front silhouette is intended to show; bury the rear
-geometry in a mounting surface.
+NMScribe (No Man's Scribe), by FuriousFurby(FF) — 2026. Official launch v2.0 (add-on version 2.0.0).
+Donated to the Community by Corvette Class Builders (CCB).
+
+Create editable panel lettering and SVG silhouettes from real No Man's Sky parts,
+not Blender text meshes or image decals. Each creation has its own collection,
+parent control and saved settings. **Storage Panels (back)** is the default for
+new Text and Icon / Sticker settings; Flat Panels is still available. Only the
+front silhouette is intended to show; bury the rear geometry in a mounting surface.
+
+This guide is also supplied as **NMScribe_Instructions.html**. Open it in any
+browser to read offline, use Ctrl-F to search, or Ctrl-P to print/save as PDF.
 
 ## Contents
 
 - [Install and find the panel](#install-and-find-the-panel)
 - [Your first sign](#your-first-sign)
+- [SVG icons and stickers](#svg-icons-and-stickers)
 - [Styles and previews](#styles-and-previews)
 - [Text and layout settings](#text-and-layout-settings)
 - [Orientation and mounting](#orientation-and-mounting)
@@ -20,6 +28,32 @@ geometry in a mounting surface.
 - [Limits and worked examples](#limits-and-worked-examples)
 - [Troubleshooting](#troubleshooting)
 - [Update or uninstall](#update-or-uninstall)
+
+## SVG icons and stickers
+
+The **Text / Icon / Sticker** switch sits immediately beneath the logo/community header. Text mode and all approved fonts are unchanged. Icon mode is an experimental geometry fitter, not a texture/decal importer.
+
+1. Choose **Icon / Sticker**, then **Import SVG**. Select a local `.svg` file (maximum 1 MB).
+2. Adjust **Accuracy** and **Part limit**. After a short pause, the preview updates without changing any objects in your scene. Amber shows the fitted panel area; red shows target detail not covered at the sampling resolution.
+3. Read the actual planned panel count before generating. The hard part limit is never exceeded. If the limit is reached, some detail remains omitted; either raise the limit or accept a simpler result. Tiny features and small islands can disappear at lower accuracy or tight budgets.
+4. Keep the default **Storage Panels (back)** or choose Flat Panels, then set icon height, orientation, face offset, and palette. Height scales the whole design uniformly and does not itself change part count. The preview is based on the Flat Panel footprint; Storage Panel faces have a very slightly different aspect ratio.
+5. Position the 3D Cursor at the desired **centre** of the icon and choose **Generate New Icon**. This creates a separate collection with a parent control and native NMS parts. Bury rear geometry in a mounting surface, as with text.
+6. To revise it later, select any generated panel and right-click **Edit NMS Icon / Sticker**, or use **Load Selected Icon Settings** in the sidebar. Adjust the preview, then click **Update Selected Icon**. The original control's position, rotation, uniform scale and untagged attachments remain. Generated panels and their manual edits are replaced; Ctrl-Z undoes the update. Default palette keeps the original group's colour/material, not individual panel recolouring.
+7. Save your `.blend`. The SVG source is stored with the icon, so re-editing does not depend on the original file remaining on disk. **Export Icon JSON** exports native game parts only, not the SVG, preview or parent control.
+
+### SVG support and limitations
+
+- Paths with lines, cubic/quadratic curves and elliptical arcs; rectangles (including rounded rectangles), circles, ellipses, polygons, polylines and lines.
+- Group transforms, internal `use` references, inline styles/presentation attributes, even-odd/nonzero holes, and simple solid strokes with common caps/joins.
+- All visible colours merge into **one silhouette**. White-filled shapes are solid, not erasers: use real holes/compound paths for cutouts. Opacity is treated as visible/not-visible, not translucent panel geometry. Gradients are treated as solid fills.
+- The imported artwork is tightly fitted to its geometry bounds, not the SVG page's whitespace. Root page dimensions/viewBox are not used as a clipping mask; keep geometry within the intended artwork area before export.
+- Convert text to outlines. Expand clipping paths, masks, filters, dashed strokes and non-scaling strokes before importing. Export styles inline, not as a stylesheet. Embedded/raster images, scripts, external resources, nested SVG viewports and viewBox-based symbol instances are unsupported. No external content is fetched or executed.
+- The fitter now traces the visible vector outline first, rotating native panels to follow each contour edge, then overlaps panels to fill the interior. Hidden edges inside overlapping SVG shapes are removed. Both outline and fill rectangles are checked against the vector boundary, including holes; the meshes themselves are never clipped, stretched or tilted.
+- Accuracy controls contour simplification and cleanup sampling. It is **not** a guarantee of perfectly smooth curves or a strictly increasing part count at each slider step. Curves are approximated with straight segments; very sharp tips and native beveled rims can retain tiny differences. Interior cleanup allows extra overlap for the Flat Panel's inset face.
+- **Part limit takes precedence over Accuracy.** If the outline would consume most of the budget, it is simplified to leave room for interior panels. The sidebar reports this and separates outline/fill counts. If small gaps remain at the cap, increase the limit or reduce accuracy. A setting of 100% does not override the limit or mean an exact SVG reproduction.
+- Standard external SVG DOCTYPE declarations (including Illustrator's SVG 1.1 declaration) are accepted and ignored locally. No DTD URL is fetched. Custom entities and internal DTD subsets remain blocked.
+- **Sampled coverage** measures raster samples, not an exact area proof for the native meshes. Even 100% at that resolution can retain subpixel gaps or contour differences. Inspect the actual panel build and verify it in game before relying on it for final artwork.
+- This version is tested offline in Blender, not certified in-game or in multiplayer. It supports one icon per update; it never updates all selected signs or icons automatically.
 
 ## Install and find the panel
 
@@ -51,7 +85,7 @@ system fonts, an online account, or additional Python packages to use the genera
 3. Open **Edit > Preferences > Add-ons** in Blender.
 4. Open the menu at the top-right of the add-on list and choose **Install from Disk**.
 5. Select the installer ZIP. Do not extract it first.
-6. Enable **NMS Text Generator for Blender Base Builder** if necessary.
+6. Enable **NMScribe for Blender Base Builder** if necessary (older releases used the name NMS Text Generator).
 7. After updating an already loaded installation, save your work and restart Blender.
 8. Hover over the **3D Viewport**, press **N**, and choose the **NMS Text** tab.
 
@@ -64,7 +98,7 @@ sidebar or scroll its vertical tabs if it is difficult to find.
 2. Position the **3D Cursor** at the sign's baseline anchor. For a simple test,
    choose **Shift-S > Cursor to World Origin**.
 3. Enter `WELCOME` in Text and choose a style from Font.
-4. Start with height 5, the default gaps, and **Flat (XY)**.
+4. Keep **Storage Panels (back)**, height 5, the default gaps, and **Flat (XY)**. Flat (XY) is an orientation, not the panel type.
 5. Leave Colour / material at **Default / keep on replace**.
 6. Check the part count and click **Generate New Text**.
 7. The panels are selected. Use **View > Frame Selected** or **Numpad .** to find them.
@@ -88,7 +122,7 @@ Use the **Font dropdown**, or click the preview tile beneath it to open the
 thumbnail picker. Both controls change the same setting. The thumbnails show
 fixed `ABC / 123` samples rendered from native parts, not your current text.
 
-Each style includes A-Z and 0-9. These are predefined placements, not arbitrary
+Each style includes A-Z, 0-9 and `- _ / \ ? ! | [ ] + = : .`. These are predefined placements, not arbitrary
 TTF/OTF conversion. No system font installation is needed. Some glyphs intentionally
 share shapes, including O and zero. See NOTICE.md for credits and reference provenance.
 
@@ -107,9 +141,9 @@ work and restart Blender before looking for Vector.
 
 ### Panel type: Flat or Storage
 
-- **Flat Panels** is the default and preserves the original native front face.
-- **Storage Panels (back)** uses the plain flat back, with the detailed front
+- **Storage Panels (back)** is the default for fresh settings in both modes. It uses the plain flat back, with the detailed front
   buried in the mounting surface. There is no tilted-face construction.
+- **Flat Panels** is still available and uses the original decorated native front face.
 - This changes the item, not the glyph design, spacing or number of pieces.
   Storage faces are uniformly scaled to fit within the Flat Panel footprint.
   Their aspect ratios differ slightly (about 0.26%); neither asset is stretched.
@@ -118,8 +152,9 @@ work and restart Blender before looking for Vector.
   As with font changes, this replaces manual edits to its generated panels.
 - From one selected panel, right-click **Edit NMS Text** to change the saved
   panel type in the dialog. **OK** applies; **Cancel** leaves the sign unchanged.
-- Old signs default to Flat Panels. Installing an update or opening a file does
-  not regenerate existing geometry. The choice persists in the `.blend`.
+- Saved signs, icons and explicitly saved sidebar choices keep their selected
+  panel type. Very old signs with no panel-type metadata still fall back to Flat
+  Panels. Installing an update or opening a file does not regenerate geometry.
 - JSON export contains the actual `^BUILDFLATPANEL` or `^STORAGEPANEL` IDs.
   Compare loading in your own NMS build; Blender tests do not establish which
   part type loads faster, more reliably, or identically for other players.
@@ -128,17 +163,38 @@ work and restart Blender before looking for Vector.
 
 ### Text entry
 
-Supported input is **A-Z, 0-9, spaces and line breaks**. Lowercase a-z converts
-to uppercase. Punctuation, accented characters and other symbols are rejected
-with an explanation rather than silently omitted.
+Supported input is **A-Z, 0-9, spaces, line breaks**, and these thirteen symbols:
+`- _ / \ ? ! | [ ] + = : .`. Lowercase a-z converts to uppercase. Commas, accented
+characters and other unlisted symbols are rejected with an explanation rather
+than silently omitted. Symbols work with every font and both panel types.
 
-Type the two characters `\n` for a new line:
+Type directly in the normal sidebar **Text** field. Use `<br>` for a new line:
+`WELCOME<br>TRAVELLERS`. `<br/>`, `<br />` and uppercase `<BR>` also work.
+Repeated tags create blank lines. There is no separate text-entry window.
+This is a line-break shorthand, not an HTML renderer: formatting tags, scripts,
+and entities are not supported. Use the existing alignment and spacing controls.
 
-```text
-WELCOME\nTRAVELLERS
-```
+Type backslash as `\`, exactly once. There are no escape shortcuts for new text:
+`\n` means a backslash followed by N. Pasted line breaks work normally. Repeated
+spaces add additional space. Older saved signs convert their former escape
+notation once when loaded for editing or regeneration, preserving their layout.
 
-This produces two lines. Repeated spaces add additional space.
+Hyphens sit at mid-height and underscores at the baseline. Brackets, slashes and
+vertical bars are 12% taller than letters, extending 6% above the cap height and
+6% below the baseline. Question/exclamation marks retain normal character height.
+Symbols have individual widths, rather than full-letter padding.
+The period is a baseline-aligned square dot matching the font's stroke weight,
+made from three overlapping native panels. It also works in numbers such as `3.14`.
+
+### Creator and community
+
+The sidebar displays the amber paneled **NMScribe** banner, with **by:
+FuriousFurby(FF) - 2026** aligned right underneath and a subtle **Donated to the Community by
+Corvette Class Builders (CCB)** credit. Click **CCB / Traveller Toolkit** to open
+the server invite in your browser.
+After joining, obtain the appropriate server role to see **Traveller Toolkit**.
+The link does not grant the role or join automatically. The tool itself remains
+offline; using Discord is optional. Branding follows your Blender theme.
 
 ### Settings reference
 
@@ -218,8 +274,9 @@ other fields require an explicit edit/apply action.
 
 1. In Object Mode, select **any one panel** of the sign.
 2. Right-click in the 3D Viewport and choose **Edit NMS Text**.
-3. The dialog loads that sign's text, style, size and spacing.
-4. Make changes and check the displayed part count.
+3. Edit the text directly in the dialog's **Text** field; use `<br>` for new lines.
+4. The layout dialog loads the sign's style, size and spacing. Adjust these and
+   check the displayed part count.
 5. **OK** rebuilds the sign. **Cancel** leaves it unchanged.
 
 The same Edit button is in the NMS Text sidebar. All panels may also be selected.
@@ -345,7 +402,8 @@ These guards do not represent current NMS base/upload limits.
 
 ### Centered two-line welcome
 
-Enter `WELCOME\nTRAVELLERS`, choose Center, height 5 and line gap 1.5. Generate.
+Type `WELCOME<br>TRAVELLERS` in the Text field.
+Choose Center, height 5 and line gap 1.5. Generate.
 Both lines share the same center anchor; their baselines are 6.5 units apart
 before parent scaling.
 
@@ -369,6 +427,10 @@ cursor position, then Generate New Text. Each sign has its own collection/contro
 | Symptom | What to check |
 | --- | --- |
 | No NMS Text tab | Enable the add-on; hover over the 3D Viewport, press N, and look for its separate tab. Restart after updating. |
+| Old file still shows Flat Panels | The new default applies to fresh settings, not a saved selection. Choose Storage Panels (back) explicitly if you want to convert the existing creation. |
+| SVG declaration error | Update to v2.0. Ordinary external SVG declarations are accepted; custom entities/internal DTDs are still blocked. |
+| SVG artwork has missing details | Increase the part limit or simplify the source. The cap overrides Accuracy; 100% is not an exact reproduction guarantee. Expand unsupported SVG features to paths. |
+| SVG slider changes only the preview | Select the icon, load its settings, then choose Update Selected Icon. Generate New Icon creates another copy. |
 | Enable NMS Base Builder first | Install/enable the dependency in this same Blender installation. |
 | Missing builder_v2 | Update NMS Text to 1.6.1 or newer for the split Base Builder release. Charon Forge is optional. |
 | Missing native panel assets | Repair/reinstall the compatible Base Builder, or Charon Forge if using HD mode. The generator will not invent substitute geometry. |
@@ -378,7 +440,7 @@ cursor position, then Generate New Text. Each sign has its own collection/contro
 | No right-click Edit entry | Use Object Mode and select a panel still parented to a generated control. Plain imported JSON parts lack editable text metadata. |
 | Original text group unavailable | Restart after updating from v1.3.0; the dialog bug was fixed in v1.3.1. Also check the control/metadata was not removed. |
 | Generate unavailable | Check Object Mode, dependency, supported nonempty text, and the displayed validation message. |
-| Unsupported characters | Use A-Z, 0-9, spaces and `\n`; remove punctuation/accented characters. |
+| Unsupported characters | Use A-Z, 0-9, `- _ / \ ? ! \| [ ] + = : .`, spaces and `<br>` line breaks; remove unlisted punctuation/accented characters and other HTML tags. |
 | Too many parts | Generate shorter sections or choose a style with a lower displayed count. |
 | Stretched/mirrored/sheared export error | Restore positive uniform transforms, or regenerate a clean sign. |
 | Copy active colour fails | Select a native NMS part with UserData, or use Default. |

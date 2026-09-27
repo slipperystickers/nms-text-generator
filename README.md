@@ -1,7 +1,19 @@
-# NMS Text Generator for Blender Base Builder
+# NMScribe — No Man's Scribe for Blender Base Builder
 
 Build editable No Man's Sky lettering from native Flat Panels or Storage Panel backs, with five
 panel-lettering styles, visual previews, automatic style switching and right-click editing.
+
+**NMScribe v2.0 is the first official launch.** It includes contour-first SVG
+**Icon / Sticker mode (experimental)** alongside the five lettering styles. Switch modes
+under the branding header, import a local SVG, and adjust accuracy and a hard
+panel limit. The fitted silhouette preview and part count update before you
+generate anything. Icons use native panels, stay editable in separate collections,
+and export as native JSON. This is an approximate **single-colour** geometry fitter,
+not a multicolour decal or exact curve trace. [SVG instructions and limitations](USER_GUIDE.md#svg-icons-and-stickers).
+
+Created by **FuriousFurby**, shared with the community through **Corvette Class
+Builders (CCB)**. [Join CCB](https://discord.gg/arbW3DvM5y) and visit
+**Traveller Toolkit** (channel access requires the appropriate server role).
 
 An independent Blender add-on with its own **NMS Text** sidebar. It calls
 No Man's Sky Base Builder's native-part functions; it does not modify that add-on.
@@ -16,7 +28,7 @@ Do **not** install GitHub's automatically generated Source code ZIP.
 
 1. Install and enable the compatible No Man's Sky Base Builder first.
 2. In Blender, open **Edit > Preferences > Add-ons > menu > Install from Disk**.
-3. Select the add-on ZIP without extracting it, then enable **NMS Text Generator for Blender Base Builder**.
+3. Select the add-on ZIP without extracting it, then enable **NMScribe for Blender Base Builder**.
 4. After an update, save your work and restart Blender.
 5. Hover over the 3D Viewport, press **N**, and open the **NMS Text** tab.
 
@@ -38,7 +50,7 @@ are bundled in this text add-on, and it never substitutes invented geometry.
 ## Quick start
 
 1. Use **Object Mode** and place the **3D Cursor** at the sign's baseline anchor.
-2. Enter text, choose a style and **Panel type**, set size/spacing and orientation, then click **Generate New Text**.
+2. Enter text, choose a style, set size/spacing and orientation, then click **Generate New Text**. **Storage Panels (back)** is the default in both Text and Icon / Sticker modes; Flat Panels remains available.
 3. Leave all panels of that sign selected and choose another style or panel type to regenerate automatically.
 4. Later, select any one panel and right-click **Edit NMS Text**. Confirm with **OK**; Cancel changes nothing.
 5. Use **Select Control** to move, rotate or uniformly scale the whole sign.
@@ -46,6 +58,10 @@ are bundled in this text add-on, and it never substitutes invented geometry.
 
 **[Read the complete User Guide](USER_GUIDE.md)** — installation, every setting,
 multiline text, mounting, colours, re-editing, examples, export and troubleshooting.
+The launch package also includes **NMScribe_Instructions.html**: a complete,
+searchable, printable offline instruction page with no login or internet required.
+Existing files retain their saved panel choice; old signs without that setting
+still use Flat Panels. A new default never rebuilds existing work.
 
 ## Five panel-lettering styles
 
@@ -68,9 +84,12 @@ corrected C with inward-facing terminals. All exposed faces remain parallel.
 Small panels approximate pointed ends; this is not an exact outline trace.
 
 The picker uses the familiar label **Font**, but these are predefined NMS part
-placements, not installable TTF/OTF font files. All styles support A-Z and 0-9.
-Lowercase converts to uppercase; type `\n` for a new line. No punctuation or
-arbitrary font tracing is included. See [credits and provenance](NOTICE.md).
+placements, not installable TTF/OTF font files. All styles support A-Z, 0-9,
+and these thirteen symbols: `- _ / \ ? ! | [ ] + = : .`. Type directly in the
+sidebar text field. Use `<br>` for a new line (also `<br/>` or `<br />`).
+Backslashes are literal. Older saved escape-based signs remain compatible.
+Commas and other unlisted punctuation are not supported. Lowercase converts to
+uppercase. No arbitrary font tracing is included. See [credits and provenance](NOTICE.md).
 
 **Panel type** changes the native item, not the font design or part count.
 Storage Panels expose their plain back face; Flat Panels expose their decorated
@@ -97,8 +116,10 @@ python -m unittest discover -s tests -v
 python scripts/build_release.py
 ```
 
-The installer ZIP and SHA-256 checksum are created in `dist/`. No network access
-or third-party Python packages are required for these commands.
+The installer ZIP, offline instruction page, launch notes and SHA-256 checksums
+are created in `dist/`. Building the release requires only Python's standard
+library and no network. SVG fitting tests additionally use NumPy (already bundled
+with Blender).
 
 For the native integration tests, use Blender with the compatible Base Builder
 installed. This opens a separate factory-startup/background session:

@@ -13,14 +13,34 @@ base=enable_dependencies()
 import nms_text_generator as a
 a.register()
 c=bpy.context;s=c.scene.nms_text_settings
-assert a.bl_info['version']==(1,6,1)
+assert a.bl_info['version']==(2,0,0)
+assert s.panel_type=='STORAGEPANEL'
+assert c.scene.nms_icon_settings.panel_type=='STORAGEPANEL'
+# The long-standing full-font suite explicitly exercises Flat Panels, while
+# blender_panels.py exercises the Storage variant of every font.
+s.panel_type='BUILDFLATPANEL'
+assert 'NMSCRIBE' in a._previews
+s.text='ONE<br>TWO'
+assert a.make_plan(a.config_from_settings(s))['lines']==2
+a.load_settings(s,dict(a.config_from_settings(s),text='ONE\nTWO'))
+assert s.text=='ONE<br>TWO'
+s.text='CCB'
+assert 'BRAND_FURBY' not in a._previews
+assert a.bl_info['author']=='FuriousFurby'
+legacy_text=dict(a.config_from_settings(s),text=r'ONE\nTWO\\n3')
+legacy_text.pop('text_version')
+upgraded=a.upgrade_config(legacy_text)
+assert upgraded['text']=='ONE\nTWO\\n3'
+assert a.upgrade_config(upgraded)==upgraded
+assert a.make_plan(upgraded)['lines']==2
+assert a.make_plan(dict(upgraded,text=r'ONE\nTWO'))['lines']==1
 assert s.auto_font
 assert a.NMSTEXT_PT_panel.bl_category=='NMS Text'
 s['auto_font']=False;a.initialize_auto_switch();assert s.auto_font
 s.auto_font=False;a.initialize_auto_switch();assert not s.auto_font
 s.auto_font=True
 for key,name,_ in a.layout.FONTS:
-    a.load_settings(s,dict(a.config_from_settings(s),font=key,text=string.ascii_uppercase+string.digits))
+    a.load_settings(s,dict(a.config_from_settings(s),font=key,text=a.layout.CHARACTERS))
     root=a.create_text(c,a.config_from_settings(s))
     records=a.export_data(root)['Objects']
     assert len(records)==sum(map(len,a.layout.library(key)['glyphs'].values()))
@@ -83,7 +103,7 @@ root=find();a.select_parts(bpy.context,root)
 s=bpy.context.scene.nms_text_settings
 s.font='VECTOR';a.apply_pending_font()
 assert json.loads(root[a.CONFIG])['font']=='VECTOR'
-config=json.loads(root[a.CONFIG]);config['text']='AVWD RKYX 47'
+config=json.loads(root[a.CONFIG]);config['text']='AVWD RKYX 47 '+a.layout.SYMBOLS
 assert bpy.ops.nms_text.edit('EXEC_DEFAULT',root_name=root.name,owner=uid,**config)=={'FINISHED'}
 assert root['nms_text_library']=='Vector'
 with tempfile.TemporaryDirectory(prefix='nms-text-smoke-') as folder:

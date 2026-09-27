@@ -19,7 +19,7 @@ class LayoutTests(unittest.TestCase):
             with self.subTest(font=key):
                 data=layout.library(key)
                 self.assertEqual(data['name'],name)
-                self.assertEqual(set(data['glyphs']),set(string.ascii_uppercase+string.digits))
+                self.assertEqual(set(data['glyphs']),set(layout.CHARACTERS))
                 for rows in data['glyphs'].values():
                     for r in rows:
                         self.assertEqual(r['ObjectID'],'^BUILDFLATPANEL')
@@ -30,17 +30,17 @@ class LayoutTests(unittest.TestCase):
                         # The native Blender test validates the reconstructed uniform matrix.
                         self.assertAlmostEqual(lengths[1],1,places=5)
                         self.assertLess(abs(sum(x*y for x,y in zip(a,b)))/(lengths[0]*lengths[1]),1e-5)
-                self.assertEqual(layout.plan(string.ascii_uppercase+string.digits,font=key)['part_count'],sum(map(len,data['glyphs'].values())))
+                self.assertEqual(layout.plan(layout.CHARACTERS,font=key)['part_count'],sum(map(len,data['glyphs'].values())))
 
     def test_approved_counts(self):
-        self.assertEqual({k:sum(map(len,layout.library(k)['glyphs'].values())) for k,n,p in layout.FONTS},
+        self.assertEqual({k:sum(len(layout.library(k)['glyphs'][c]) for c in string.ascii_uppercase+string.digits) for k,n,p in layout.FONTS},
                          {'FUTURE_Z':646,'INDUSTRIAL':384,'ORBITAL':603,'FOUNDRY':646,'VECTOR':626})
         self.assertEqual(len(layout.library('ORBITAL')['glyphs']['N']),13)
         self.assertEqual(len(layout.library('ORBITAL')['glyphs']['Q']),22)
 
     def test_multiline_and_alignment(self):
         for font,_,_ in layout.FONTS:
-            p=layout.plan('ab\\n12',font=font,alignment='CENTER')
+            p=layout.plan('ab\n12',font=font,alignment='CENTER')
             self.assertEqual(p['text'],'AB\n12')
             self.assertEqual(p['lines'],2)
             self.assertEqual(p['placements'][0]['x'],-p['line_widths'][0]/2)
@@ -50,7 +50,7 @@ class LayoutTests(unittest.TestCase):
             self.assertEqual(layout.plan('AA',font=font,height=10,letter_gap=2)['line_widths'],[w*4+2])
 
     def test_invalid_input(self):
-        for args in ({'text':'!'}, {'text':' '}, {'text':'A','font':'INVALID'},
+        for args in ({'text':'@'}, {'text':' '}, {'text':'A','font':'INVALID'},
                      {'text':'B'*2000}, {'text':'A','height':float('nan')},
                      {'text':'A','alignment':'BAD'}, {'text':'A','height':0}):
             with self.subTest(args=str(args)[:60]),self.assertRaises(ValueError):layout.plan(**args)
@@ -61,7 +61,7 @@ class LayoutTests(unittest.TestCase):
     def test_vector_width_and_part_budget(self):
         data=layout.library('VECTOR')
         self.assertEqual(data['widths']['I'],.64)
-        self.assertEqual({w for c,w in data['widths'].items() if c!='I'},{4.9})
+        self.assertEqual({w for c,w in data['widths'].items() if c!='I' and c.isalnum()},{4.9})
         self.assertEqual(data['max_parts_per_character'],32)
         self.assertEqual(len(data['glyphs']['D']),22)
         self.assertEqual(len(data['glyphs']['7']),8)
@@ -82,9 +82,29 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(layout.plan('TYNDUSTRIAL ASTRONAUTICS',font='VECTOR')['part_count'],367)
 
     def test_preview_files(self):
+        self.assertTrue((ROOT/'nms_text_generator/previews/furiousfurby.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n'))
         for key,_,_ in layout.FONTS:
             data=(ROOT/'nms_text_generator'/'previews'/(key.lower()+'.png')).read_bytes()
             self.assertTrue(data.startswith(b'\x89PNG\r\n\x1a\n'))
+
+    def test_symbols_and_backslash_escaping(self):
+        self.assertEqual(len(layout.CHARACTERS),49)
+        self.assertEqual(layout.normalize(r'A\nB'),r'A\NB')
+        self.assertEqual(layout.normalize(r'A\\nB'),r'A\\NB')
+        self.assertEqual(layout.decode_legacy(r'A\nB'),'A\nB')
+        self.assertEqual(layout.decode_legacy(r'A\\nB'),r'A\nB')
+        self.assertEqual(layout.normalize(r'A\B'),r'A\B')
+        self.assertEqual(layout.normalize('\\'),'\\')
+        for key,_,_ in layout.FONTS:
+            p=layout.plan(layout.SYMBOLS,font=key)
+            self.assertEqual(p['character_count'],13)
+            self.assertEqual(p['text'],layout.SYMBOLS)
+            self.assertEqual(layout.plan(r'\\',font=key)['character_count'],2)
+            data=layout.library(key)
+            self.assertEqual(len(data['glyphs']['.']),3)
+            self.assertEqual(layout.plan('3.14',font=key)['text'],'3.14')
+            for c in layout.SYMBOLS:
+                self.assertLessEqual(len(data['glyphs'][c]),32 if c=='?' else 8)
 
     def test_vector_y_optical_spacing(self):
         for alignment in ('LEFT', 'CENTER', 'RIGHT'):
