@@ -82,7 +82,8 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(layout.plan('TYNDUSTRIAL ASTRONAUTICS',font='VECTOR')['part_count'],367)
 
     def test_preview_files(self):
-        self.assertTrue((ROOT/'nms_text_generator/previews/furiousfurby.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n'))
+        for name in ('nmscribe.png','nmscribe_credit.png','nmscribe_sidebar.png'):
+            self.assertTrue((ROOT/'nms_text_generator'/'previews'/name).read_bytes().startswith(b'\x89PNG\r\n\x1a\n'))
         for key,_,_ in layout.FONTS:
             data=(ROOT/'nms_text_generator'/'previews'/(key.lower()+'.png')).read_bytes()
             self.assertTrue(data.startswith(b'\x89PNG\r\n\x1a\n'))
