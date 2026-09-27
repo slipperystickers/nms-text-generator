@@ -1,14 +1,13 @@
 bl_info = {
     'name': 'NMS Text Generator for Blender Base Builder',
     'author': 'Kengo / Codex',
-    'version': (1, 6, 0),
+    'version': (1, 6, 1),
     'blender': (5, 1, 0),
     'location': '3D View > Sidebar > NMS Text',
     'description': 'Approved native-part lettering through NMS Base Builder; separate sidebar tab',
     'category': 'Object',
 }
 
-import importlib
 import json
 import math
 import textwrap
@@ -22,7 +21,7 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty
 from bpy_extras.io_utils import ExportHelper
 from mathutils import Matrix, Vector
 
-from . import layout, panels
+from . import backend, layout, panels
 
 OWNER = 'nms_text_owner'
 ROOT = 'nms_text_root'
@@ -131,25 +130,14 @@ def load_previews():
         _font_items.append((key,name,name+' — native panels, A-Z and 0-9',icon,index))
 
 def dependency_name():
-    for name in bpy.context.preferences.addons.keys():
-        if name == 'no_mans_sky_base_builder' or name.endswith('.no_mans_sky_base_builder'):
-            return name
-    return None
+    return backend.dependency_name(bpy.context.preferences.addons.keys())
 
 def get_builder(part_id=panels.DEFAULT):
-    name = dependency_name()
-    if not name:
-        raise ValueError('Enable No Man\'s Sky Base Builder in Preferences > Add-ons first.')
-    try:
-        b = importlib.import_module(name + '.builder_v2')
-    except ImportError as exc:
-        raise ValueError('This Base Builder installation does not provide builder_v2.') from exc
-    if not all(hasattr(b,k) for k in ('add_part','Part','BUILDER','get_asset_index')):
-        raise ValueError('This Base Builder version lacks the required native-part API.')
+    b = backend.resolve(bpy.context.preferences.addons.keys())
     index = b.get_asset_index()
     missing = {panels.validate(part_id)} - set(index)
     if missing:
-        raise ValueError('Base Builder is missing textured native assets: ' + ', '.join(sorted(missing)))
+        raise ValueError('Base Builder is missing required native panel assets: ' + ', '.join(sorted(missing)))
     return b
 
 def config_from_settings(settings):
@@ -259,8 +247,10 @@ def create_text(context, config, matrix=None, user_data=None):
                 obj['nms_text_line'] = placement['line']
                 obj.select_set(False)
                 context.view_layer.objects.active = None
-                if not obj.data.name.startswith('NMS_HR_') or not obj.material_slots:
-                    raise ValueError('Base Builder did not return the expected textured native asset.')
+                if obj.get('ObjectID') != part_id or not obj.material_slots:
+                    raise ValueError('Base Builder did not return the expected native panel and materials.')
+                if getattr(b,'requires_high_res',True) and not obj.data.name.startswith('NMS_HR_'):
+                    raise ValueError('The HD provider did not return the expected high-resolution native panel.')
                 sequence += 1
         context.view_layer.update()
         assert len(managed_parts(root)) == plan['part_count']
@@ -538,7 +528,7 @@ class NMSTEXT_PT_panel(bpy.types.Panel):
             box=ui.box()
             box.alert=True
             box.label(text='Enable NMS Base Builder first.',icon='ERROR')
-        ui.label(text='Native panel lettering - v1.6.0')
+        ui.label(text='Native panel lettering - v1.6.1')
         ui.prop(settings,'auto_font')
         ui.prop(settings,'font')
         ui.prop(settings,'panel_type')

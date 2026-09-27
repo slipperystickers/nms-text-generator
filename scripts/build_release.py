@@ -15,7 +15,7 @@ files={p.relative_to(ROOT).as_posix():p for p in ADDON.rglob('*')
 for name in ('README.md','USER_GUIDE.md','NOTICE.md','LICENSE','CHANGELOG.md'):
     files['nms_text_generator/'+name]=ROOT/name
 assert all(p.exists() for p in files.values())
-assert len(files)==18,len(files)
+assert len(files)==19,len(files)
 out=ROOT/'dist';out.mkdir(exist_ok=True)
 archive=out/f'NMS_Text_Generator_{version}.zip'
 with ZipFile(archive,'w',ZIP_DEFLATED,compresslevel=9) as z:

@@ -7,12 +7,13 @@ import addon_utils,bpy
 assert bpy.app.background, 'Run this test in a separate background Blender process.'
 ROOT=Path(__file__).resolve().parents[1]
 if '--installed' not in sys.argv:sys.path.insert(0,str(ROOT))
-base='bl_ext.user_default.no_mans_sky_base_builder'
-addon_utils.enable(base,default_set=True)
+sys.path.insert(0,str(ROOT/'tests'))
+from native_bootstrap import enable_dependencies
+base=enable_dependencies()
 import nms_text_generator as a
 a.register()
 c=bpy.context;s=c.scene.nms_text_settings
-assert a.bl_info['version']==(1,6,0)
+assert a.bl_info['version']==(1,6,1)
 assert s.auto_font
 assert a.NMSTEXT_PT_panel.bl_category=='NMS Text'
 s['auto_font']=False;a.initialize_auto_switch();assert s.auto_font

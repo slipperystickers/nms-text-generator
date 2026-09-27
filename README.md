@@ -5,6 +5,8 @@ panel-lettering styles, visual previews, automatic style switching and right-cli
 
 An independent Blender add-on with its own **NMS Text** sidebar. It calls
 No Man's Sky Base Builder's native-part functions; it does not modify that add-on.
+**Charon Forge is optional:** use it for HD models/textures, or use Base Builder's
+standard native models/materials without it. The previous combined add-on remains supported.
 
 ## Download and install
 
@@ -18,11 +20,20 @@ Do **not** install GitHub's automatically generated Source code ZIP.
 4. After an update, save your work and restart Blender.
 5. Hover over the 3D Viewport, press **N**, and open the **NMS Text** tab.
 
-Tested on **Blender 5.1.2 / Windows**, with the **18.0.8 Base Builder installation**
-used during development. The dependency must expose `builder_v2.add_part`,
-`Part`, `BUILDER`, `get_asset_index`, and the high-resolution `BUILDFLATPANEL`
-asset (`STORAGEPANEL` is also required for the Storage option). Compatibility with other builds is not yet established. The plugin reports
-missing dependency/API/assets instead of generating substitute geometry.
+Tested on **Blender 5.1.2 / Windows** with these three configurations:
+
+| Base Builder | Charon Forge | Blender display |
+| --- | --- | --- |
+| Previous combined 18.0.8 development build | Not required | Combined add-on's HD assets |
+| New official 7.0.0 | Not installed/enabled | Standard native models/materials |
+| New official 7.0.0 | 0.1.0 enabled | Charon Forge HD assets/textures |
+
+These version numbers belong to different release lines. The same sign settings,
+native item IDs, placements and part counts work in all three; switching providers
+does not rebuild saved signs automatically. Regenerate a sign to refresh its models.
+Required native assets are `BUILDFLATPANEL` and, for Storage mode, `STORAGEPANEL`.
+Other builds/operating systems are not yet verified. No game meshes or textures
+are bundled in this text add-on, and it never substitutes invented geometry.
 
 ## Quick start
 
@@ -97,6 +108,12 @@ blender --background --factory-startup --python tests/blender_smoke.py
 blender --background --factory-startup --python tests/blender_panels.py
 blender --background --factory-startup --python tests/zip_smoke.py
 ```
+
+The tests enable the installed split dependencies by default. Set
+`NMS_TEXT_TEST_STANDARD=1` to test Base Builder without Charon Forge. For the
+previous combined add-on, set `NMS_TEXT_TEST_LEGACY` to that add-on's directory;
+`NMS_TEXT_TEST_DEPS` optionally supplies its already-unpacked Python dependencies.
+Use a separate process per configuration; tests do not save Blender preferences.
 
 Use `-- --installed` to test the installed module instead of this checkout.
 Blender may return exit code 0 even when a script fails: check for the final

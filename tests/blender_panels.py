@@ -8,7 +8,9 @@ from mathutils import Matrix, Vector
 assert bpy.app.background
 ROOT=Path(__file__).resolve().parents[1]
 if '--installed' not in sys.argv:sys.path.insert(0,str(ROOT))
-addon_utils.enable('bl_ext.user_default.no_mans_sky_base_builder',default_set=True)
+sys.path.insert(0,str(ROOT/'tests'))
+from native_bootstrap import enable_dependencies
+enable_dependencies()
 import nms_text_generator as a
 a.register()
 ctx=bpy.context;settings=ctx.scene.nms_text_settings
@@ -21,6 +23,7 @@ verts=[probe.data.vertices[i].co for p in back for i in p.vertices]
 dimensions=tuple(max(v[i] for v in verts)-min(v[i] for v in verts) for i in (0,2))
 assert max(abs(x-y) for x,y in zip(dimensions,a.panels.STORAGE_FACE_SIZE))<1e-5
 native_mesh=probe.data
+native_coordinates=tuple(tuple(v.co) for v in native_mesh.vertices)
 bpy.data.objects.remove(probe,do_unlink=True)
 
 for key,_,_ in a.layout.FONTS:
@@ -31,7 +34,13 @@ for key,_,_ in a.layout.FONTS:
     assert all(r['ObjectID']=='^STORAGEPANEL' for r in records)
     for obj in a.managed_parts(root):
         a.check_matrix(obj.matrix_world)
-        assert obj.data==native_mesh and obj.material_slots and not obj.modifiers
+        assert obj.material_slots and not obj.modifiers
+        if getattr(builder,'requires_high_res',True):
+            assert obj.data==native_mesh
+        else:
+            # The standard factory can re-import/copy its FBX rather than share
+            # Forge's single mesh. Its native coordinates must remain identical.
+            assert tuple(tuple(v.co) for v in obj.data.vertices)==native_coordinates
         normal=(obj.matrix_world.to_3x3()@Vector((0,-1,0))).normalized()
         assert normal.z>.99999
         r=builder.Part.deserialise_from_object(obj,builder.BUILDER).serialise()

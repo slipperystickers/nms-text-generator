@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.1 — compatibility update
+
+- Added support for official Base Builder 7.0.0 and Charon Forge 0.1.0, using
+  the new native-part hooks instead of requiring the removed `builder_v2` module.
+- Charon Forge is optional: Base Builder 7.0.0 alone uses its standard native
+  panel models/materials. The previous combined 18.0.8 add-on still uses its
+  existing HD API without needing Forge.
+- No changes to glyphs, spacing, part counts, native IDs or exported placements.
+  Saved signs remain editable; installing does not regenerate existing objects.
+- Resolve the active host builder at operation time, and preserve transactional
+  replacement, selection safeguards, auto-switching and right-click editing.
+- This add-on does not patch or modify either dependency.
+
 ## 1.6.0 — 2026-09-26
 
 - First public release of Vector, the fifth A-Z/0-9 lettering style, including

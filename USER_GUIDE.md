@@ -25,11 +25,17 @@ geometry in a mounting surface.
 
 ### Requirements
 
-Tested with **Blender 5.1.2 for Windows** and the **18.0.8 Base Builder installation**
-used in development. This is not a compatibility guarantee for every build carrying
-that version number. The dependency must expose `builder_v2.add_part`, `Part`,
-`BUILDER`, `get_asset_index`, and the textured high-resolution `BUILDFLATPANEL`.
-The optional Storage Panel mode additionally requires `STORAGEPANEL`.
+Tested with **Blender 5.1.2 for Windows** using either:
+
+- The previous combined **18.0.8 Base Builder development build**. No Charon Forge needed.
+- The new official **Base Builder 7.0.0 alone**, using its standard native models/materials.
+- **Base Builder 7.0.0 + Charon Forge 0.1.0**, using Charon Forge's HD models/textures.
+
+**Charon Forge is optional, not a requirement to generate or export text.** The
+version numbers above belong to different release lines. Native IDs, transforms,
+lettering designs and part counts are identical across these configurations; the
+Blender model/material display can differ. Standard models do not have Forge's HD
+textures. Required assets are `BUILDFLATPANEL` and, for Storage mode, `STORAGEPANEL`.
 Other operating systems and dependency builds are not yet verified.
 
 Base Builder must be installed separately. The text generator does not contain
@@ -38,7 +44,8 @@ system fonts, an online account, or additional Python packages to use the genera
 
 ### Installation steps
 
-1. Install and enable the compatible **No Man's Sky Base Builder** first.
+1. Install and enable the compatible **No Man's Sky Base Builder** first. With the new
+   split release, optionally enable **Charon Forge** too for HD models/textures.
 2. Download the installable **NMS_Text_Generator_<version>.zip** from the project's
    Releases page. GitHub's automatic Source code ZIP is not the installer.
 3. Open **Edit > Preferences > Add-ons** in Blender.
@@ -363,7 +370,8 @@ cursor position, then Generate New Text. Each sign has its own collection/contro
 | --- | --- |
 | No NMS Text tab | Enable the add-on; hover over the 3D Viewport, press N, and look for its separate tab. Restart after updating. |
 | Enable NMS Base Builder first | Install/enable the dependency in this same Blender installation. |
-| Missing builder_v2 or native assets | The dependency does not provide the required API/assets. Generic geometry is not a substitute. |
+| Missing builder_v2 | Update NMS Text to 1.6.1 or newer for the split Base Builder release. Charon Forge is optional. |
+| Missing native panel assets | Repair/reinstall the compatible Base Builder, or Charon Forge if using HD mode. The generator will not invent substitute geometry. |
 | Style changes but panels do not | Auto-switch must be ON; use Select Parts for exactly one sign, excluding unrelated objects. In the edit dialog, click OK. |
 | Typed text did not update the sign | Only Font and Panel type auto-switch. Use Edit NMS Text or explicit Replace for other fields. |
 | Dotted connection lines clutter the text | In Viewport Overlays > Objects, uncheck Relationship Lines. Keep the parent control intact. |
@@ -395,7 +403,11 @@ files if you need a specific version's exact geometry.
 To apply the optimized Vector recipes and spacing to an older sign, select one
 panel, right-click **Edit NMS Text**, and confirm **OK**. This rebuild replaces
 manual panel edits, so keep a backup of any hand-refined lettering first. Existing
-signs are not automatically changed when you install 1.6.0.
+signs are not automatically changed when you update the add-on. Likewise, enabling
+or disabling Charon Forge does not rewrite saved signs; use Replace Selected Text
+or confirm Edit NMS Text to refresh models from the current provider.
+Base Builder can reuse native models already cached in a scene. To check its
+standard-only appearance after disabling Forge, restart Blender with a fresh scene.
 
 Disable/remove the generator through Preferences to uninstall. Native panels
 remain usable with Base Builder; generator-specific editing requires the generator
