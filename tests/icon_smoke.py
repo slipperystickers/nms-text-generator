@@ -1,5 +1,5 @@
 """Run in isolated background Blender, using real dependency/native meshes."""
-import json,sys
+import json,sys,math
 from pathlib import Path
 from mathutils import Matrix,Vector
 import bpy
@@ -83,5 +83,15 @@ a.select_parts(bpy.context,root)
 assert bpy.ops.nms_icon.edit()=={'FINISHED'}
 assert icons.analyze(bpy.context.scene.nms_icon_settings)['part_count']==len(a.managed_parts(root))
 assert a.NMSTEXT_Settings.bl_rna.properties['mode'].enum_items['ICON'].name=='Icon / Sticker'
+# Exercise dense-stroke recovery through the packaged native creation path.
+points=' '.join(f'{i},{50+20*math.sin(i/20):.3f}' for i in range(140))
+dense=f'<svg xmlns="http://www.w3.org/2000/svg"><polyline points="{points}" fill="none" stroke="white" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/></svg>'
+s=bpy.context.scene.nms_icon_settings
+icons.load(s,dict(icons.config(s),source=dense,source_name='Dense stroke regression',accuracy=50,max_parts=100,panel_type='STORAGEPANEL'))
+result=icons.analyze(s);assert result['outline_recovered'] and result['recovery_resolution']==2048
+dense_root=icons.create(bpy.context,icons.config(s))
+assert 0<len(a.managed_parts(dense_root))==result['part_count']<=100
+assert all(o['ObjectID']=='^STORAGEPANEL' for o in a.export_data(dense_root)['Objects'])
+print('COMPLEX_SVG_NATIVE_RECOVERY_PASSED',flush=True)
 a.unregister()
 print('ICON_UNDO_SAVE_REEDIT_AND_ROLLBACK_PASSED',flush=True)

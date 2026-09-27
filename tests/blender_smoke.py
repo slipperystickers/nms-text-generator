@@ -13,7 +13,7 @@ base=enable_dependencies()
 import nms_text_generator as a
 a.register()
 c=bpy.context;s=c.scene.nms_text_settings
-assert a.bl_info['version']==(2,0,0)
+assert a.bl_info['version']==(2,0,1)
 assert s.panel_type=='STORAGEPANEL'
 assert c.scene.nms_icon_settings.panel_type=='STORAGEPANEL'
 # The long-standing full-font suite explicitly exercises Flat Panels, while

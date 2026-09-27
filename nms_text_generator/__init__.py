@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'NMScribe for Blender Base Builder',
     'author': 'FuriousFurby',
-    'version': (2, 0, 0),
+    'version': (2, 0, 1),
     'blender': (5, 1, 0),
     'location': '3D View > Sidebar > NMS Text',
     'description': 'Native-panel text and SVG icons through NMS Base Builder; separate NMS Text tab',
@@ -752,7 +752,7 @@ class NMSTEXT_PT_panel(bpy.types.Panel):
         donation.label(text='Corvette Class Builders (CCB)')
         brand.operator('wm.url_open',text='CCB / Traveller Toolkit',icon='URL').url='https://discord.gg/arbW3DvM5y'
         ui.prop(settings,'mode',expand=True)
-        ui.label(text='Native panel lettering - v2.0.0')
+        ui.label(text='Native panel lettering - v2.0.1')
         if settings.mode=='ICON':
             icon_ui.draw(ui,context)
             return

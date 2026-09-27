@@ -5,10 +5,17 @@ rotated panels trace that perimeter before a greedy interior fill. Every fill
 panel is checked against the vector boundary, including holes. NumPy only.
 """
 import math
+from functools import lru_cache
 import numpy as np
 from . import svg_geometry
+from . import svg_outline
+from .svg_outline import simplify_open, simplify_loop
 
 RATIO=3.0078125/1.260742425918579
+
+
+class SimplificationRequired(ValueError):
+    """Import preflight stops here until the user chooses Simplify & Import."""
 
 
 def cross(a,b):return a[...,0]*b[...,1]-a[...,1]*b[...,0]
@@ -85,22 +92,38 @@ def visible_loops(shapes):
     return loops
 
 
-def simplify_open(points,tolerance):
-    if len(points)<=2:return points
-    v=points[-1]-points[0];length=v@v
-    t=np.clip((points-points[0])@v/max(length,1e-24),0,1)
-    distances=np.linalg.norm(points-(points[0]+t[:,None]*v),axis=1)
-    i=int(distances.argmax())
-    if distances[i]<=tolerance:return points[[0,-1]]
-    return np.concatenate((simplify_open(points[:i+1],tolerance)[:-1],simplify_open(points[i:],tolerance)))
+def prepare_outline(shapes,allow_simplify=True):
+    """Clean before the expensive union; recover dense/fragile unions locally."""
+    original=sum(len(c) for cs,_ in shapes for c in cs)
+    cleaned=[([simplify_loop(c,1e-6) for c in cs],rule) for cs,rule in shapes]
+    count=sum(len(c) for cs,_ in cleaned for c in cs)
+    info={'input_segments':original,'cleaned_segments':count,
+          'outline_recovered':False,'recovery_resolution':0}
+    # Intersection testing is quadratic. Many tiny stroke patches are cheaper
+    # and more reliable to combine with bounded scan conversion.
+    if count<=4000 and len(cleaned)<=256:
+        try:
+            return visible_loops(cleaned),info
+        except ValueError:
+            pass
+    if not allow_simplify:
+        raise SimplificationRequired('This SVG has a very detailed outline. Choose Simplify & Import to continue.')
+    loops,recovery=svg_outline.recover(shapes)
+    info.update(recovery)
+    return loops,info
 
 
-def simplify_loop(points,tolerance):
-    i=int(np.argmax(np.linalg.norm(points-points[0],axis=1)))
-    first=simplify_open(points[:i+1],tolerance)
-    second=simplify_open(np.concatenate((points[i:],points[:1])),tolerance)
-    result=np.concatenate((first[:-1],second[:-1]))
-    return result if len(result)>=3 else points
+@lru_cache(maxsize=2)
+def read_source(source):
+    return svg_geometry.read_svg(source)
+
+
+@lru_cache(maxsize=4)
+def read_outline(source,allow_simplify=True):
+    """Reuse source cleanup while the user adjusts accuracy and part budget."""
+    shapes,bounds=read_source(source)
+    loops,info=prepare_outline(shapes,allow_simplify=allow_simplify)
+    return shapes,bounds,loops,info
 
 
 class Boundary:
@@ -145,9 +168,9 @@ def outline_panels(boundary,tolerance,limit):
         for deep in (True,False):
             for before,after in ((.03,.03),(.03,0),(0,.03),(0,0)):
                 start=p-v*before;end=q+v*after;span=length*(1+before+after)
-                depth=span*RATIO if deep else span/RATIO
-                centre=(start+end)/2+normal*depth/2
-                panel=(*centre,span if deep else depth,
+                panel_depth=span*RATIO if deep else span/RATIO
+                centre=(start+end)/2+normal*panel_depth/2
+                panel=(*centre,span if deep else panel_depth,
                        math.atan2(normal[1],normal[0]) if deep else math.atan2(v[1],v[0]))
                 if boundary.inside(panel):panels.append(panel);return
         if depth>=12 or length<tolerance*.6 or len(panels)>=limit:
@@ -249,8 +272,7 @@ def close_gaps(boundary,panels,size,limit,tolerance,edge_count):
 
 def fit_svg(source,accuracy=50,max_parts=300):
     accuracy=max(0,min(100,int(accuracy)));max_parts=max(1,min(2000,int(max_parts)))
-    shapes,bounds=svg_geometry.read_svg(source)
-    loops=visible_loops(shapes)
+    shapes,bounds,loops,cleanup=read_outline(source)
     tolerance=.004*(.15**(accuracy/100))
     # Keep budget available for filling. Relax an over-budget contour as a whole
     # instead of chopping random edges from the logo.
@@ -276,7 +298,7 @@ def fit_svg(source,accuracy=50,max_parts=300):
     excess=float((covered&~reference).sum()/max(1,reference.sum()))
     preview=np.empty((n,n,4),np.float32);preview[:]=(.055,.065,.08,1)
     preview[reference]=(.55,.19,.19,1);preview[covered]=(.95,.69,.28,1)
-    return {'panels':panels,'part_count':len(panels),'coverage':coverage,'excess':excess,
+    return {**cleanup,'panels':panels,'part_count':len(panels),'coverage':coverage,'excess':excess,
             'bounds':bounds,'resolution':n,'preview':preview,'outline_parts':edge_count,
             'outline_tolerance':tolerance,'outline_omissions':omitted,
             'outline_relaxed':relaxed,'unfilled':unfilled,

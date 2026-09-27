@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 import bpy
 import bpy.utils.previews
-from bpy.props import StringProperty,IntProperty,FloatProperty,EnumProperty,PointerProperty
+from bpy.props import BoolProperty,StringProperty,IntProperty,FloatProperty,EnumProperty,PointerProperty
 from bpy_extras.io_utils import ImportHelper,ExportHelper
 from mathutils import Matrix
 from . import icon_fit,panels,svg_geometry
@@ -31,6 +31,14 @@ def selected(context):
 
 def key(settings):
     return (hashlib.sha256(settings.source.encode('utf-8')).hexdigest(),settings.accuracy,settings.max_parts)
+
+def fitted(source,accuracy,max_parts):
+    k=(hashlib.sha256(source.encode('utf-8')).hexdigest(),accuracy,max_parts)
+    if k not in _cache:
+        result=icon_fit.fit_svg(source,accuracy,max_parts)
+        if len(_cache)>=6:_cache.pop(next(iter(_cache)))
+        _cache[k]=result
+    return _cache[k]
 
 def preview_key(k):return 'SVG_'+k[0]+f'_{k[1]}_{k[2]}'
 
@@ -68,11 +76,7 @@ def refresh():
 def analyze(settings):
     if not settings.source:raise ValueError('Import an SVG first.')
     k=key(settings)
-    if k not in _cache:
-        result=icon_fit.fit_svg(settings.source,settings.accuracy,settings.max_parts)
-        if len(_cache)>=6:_cache.pop(next(iter(_cache)))
-        _cache[k]=result
-    result=_cache[k]
+    result=fitted(settings.source,settings.accuracy,settings.max_parts)
     # The preview is diagnostic, not an extra part in the generated collection.
     name=preview_key(k)
     if _icons is not None and name not in _icons:
@@ -102,7 +106,7 @@ def load(settings,data):
 
 def create(context,data,matrix=None,user_data=None):
     a=host();b=a.get_builder(data['panel_type'])
-    result=icon_fit.fit_svg(data['source'],data['accuracy'],data['max_parts'])
+    result=fitted(data['source'],data['accuracy'],data['max_parts'])
     if result['part_count']>data['max_parts']:raise ValueError('Fitted panel count exceeds the chosen limit.')
     matrix=a.placement_matrix(context,data['orientation']) if matrix is None else matrix.copy();a.check_matrix(matrix)
     user_data=a.active_palette(context,data) if user_data is None else user_data
@@ -168,20 +172,62 @@ class NMSICON_Settings(bpy.types.PropertyGroup):
     status: StringProperty(options={'SKIP_SAVE'})
     preview_name: StringProperty(options={'SKIP_SAVE'})
 
+def import_source(context,source,source_name):
+    """Commit only after the accepted SVG has a valid fit; Cancel never calls this."""
+    s=context.scene.nms_icon_settings
+    data=config(s);data.update(source=source,source_name=source_name)
+    result=fitted(source,s.accuracy,s.max_parts)
+    load(s,data);context.scene.nms_text_settings.mode='ICON'
+    return result
+
+
+class NMSICON_OT_simplify_import(bpy.types.Operator):
+    bl_idname='nms_icon.simplify_import';bl_label='Simplify & Import';bl_options={'UNDO','INTERNAL'}
+    bl_description='Trace the SVG outline with fewer line segments, then import it. The original file is unchanged'
+    source:StringProperty(options={'HIDDEN','SKIP_SAVE'})
+    source_name:StringProperty(options={'HIDDEN','SKIP_SAVE'})
+
+    def invoke(self,context,event):
+        return context.window_manager.invoke_props_dialog(self,width=430,title='Simplify SVG?',confirm_text='Simplify & Import',cancel_default=True)
+
+    def draw(self,context):
+        ui=self.layout
+        ui.label(text='This SVG has a very detailed outline.',icon='INFO')
+        ui.label(text='Simplify it using fewer line segments?')
+        ui.separator()
+        ui.label(text='Very small details may change.')
+        ui.label(text='Your original SVG file will not be changed.')
+
+    def execute(self,context):
+        try:
+            import_source(context,self.source,self.source_name)
+            self.report({'INFO'},'SVG simplified and imported. Preview it, then generate panels.')
+            return {'FINISHED'}
+        except Exception as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
+
+
 class NMSICON_OT_import(bpy.types.Operator,ImportHelper):
     bl_idname='nms_icon.import_svg';bl_label='Import SVG';bl_options={'UNDO'}
     filename_ext='.svg'
     filter_glob:StringProperty(default='*.svg',options={'HIDDEN'})
+    # Explicit opt-in for scripts/background tests; the normal UI asks first.
+    simplify:BoolProperty(default=False,options={'HIDDEN','SKIP_SAVE'})
     def execute(self,context):
         try:
             path=Path(self.filepath)
             if path.stat().st_size>svg_geometry.MAX_BYTES:raise ValueError('SVG is larger than 1 MB. Simplify it first.')
-            source=path.read_text(encoding='utf-8-sig');s=context.scene.nms_icon_settings
-            # Validate/fill before replacing the previous imported source.
-            data=config(s);data.update(source=source,source_name=path.stem)
-            icon_fit.fit_svg(source,s.accuracy,s.max_parts)
-            load(s,data);context.scene.nms_text_settings.mode='ICON'
-            self.report({'INFO'},'SVG loaded. Adjust accuracy, then generate native panels.')
+            source=path.read_text(encoding='utf-8-sig')
+            if not self.simplify:
+                try:icon_fit.read_outline(source,allow_simplify=False)
+                except icon_fit.SimplificationRequired as exc:
+                    if bpy.app.background:
+                        self.report({'WARNING'},str(exc));return {'CANCELLED'}
+                    # The confirmation owns the pending source. Neither Cancel
+                    # nor opening this dialog changes existing settings/objects.
+                    bpy.ops.nms_icon.simplify_import('INVOKE_DEFAULT',source=source,source_name=path.stem)
+                    return {'FINISHED'}
+            result=import_source(context,source,path.stem)
+            self.report({'INFO'},'SVG simplified and imported.' if result['outline_recovered'] else 'SVG loaded. Adjust accuracy, then generate native panels.')
             return {'FINISHED'}
         except Exception as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
 
@@ -262,6 +308,9 @@ def draw(ui,context):
         ui.label(text=f"Outline: {result['outline_parts']} / Fill: {result['part_count']-result['outline_parts']}")
         ui.label(text=f"Sampled coverage: {result['coverage']:.1%}")
         ui.label(text='Amber = fitted; red = omitted detail')
+        if result.get('outline_recovered'):
+            ui.label(text='SVG outline simplified for import',icon='INFO')
+            ui.label(text='Very small details may be reduced.')
     elif s.source and key(s) not in _errors and not bpy.app.timers.is_registered(refresh):
         # Drawing cannot write Scene properties; only queue a later refresh.
         request_preview(context.scene)
@@ -285,7 +334,7 @@ def draw(ui,context):
 def menu(self,context):
     if selected(context):self.layout.operator('nms_icon.edit',icon='IMAGE_DATA')
 
-CLASSES=(NMSICON_Settings,NMSICON_OT_import,NMSICON_OT_generate,NMSICON_OT_load,NMSICON_OT_replace,NMSICON_OT_select,NMSICON_OT_export)
+CLASSES=(NMSICON_Settings,NMSICON_OT_simplify_import,NMSICON_OT_import,NMSICON_OT_generate,NMSICON_OT_load,NMSICON_OT_replace,NMSICON_OT_select,NMSICON_OT_export)
 def register():
     global _icons
     _icons=bpy.utils.previews.new()
@@ -296,6 +345,8 @@ def unregister():
     global _icons
     if bpy.app.timers.is_registered(refresh):bpy.app.timers.unregister(refresh)
     _dirty.clear();_cache.clear();_errors.clear()
+    icon_fit.read_outline.cache_clear()
+    icon_fit.read_source.cache_clear()
     bpy.types.VIEW3D_MT_object_context_menu.remove(menu)
     del bpy.types.Scene.nms_icon_settings
     for cls in reversed(CLASSES):bpy.utils.unregister_class(cls)

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.1 — SVG import cleanup hotfix
+
+- Automatically remove redundant path sampling before stroke expansion and outline fitting.
+- Combine stroke patches with consistent winding so overlaps cannot cancel into holes.
+- Recover complex or numerically fragile outlines locally at 2048-pixel resolution instead of rejecting them at the vector-union limit. Trace closed contours, including openings, then fit panels along the outline as before.
+- When an imported SVG needs outline simplification, offer **Simplify & Import** or **Cancel** before tracing it. Cancel preserves the previously loaded icon/settings. Simple SVGs load normally. Recovery can reduce details smaller than its sampling resolution; unsupported SVG effects and security/resource limits still apply.
+- Reuse cleaned outlines and fitted previews across slider changes, import and generation to avoid repeated work.
+- Fix the outline fitter's subdivision-depth variable being overwritten by panel dimensions.
+- Preserve source files, saved SVG settings, existing generated objects, Text mode and both Base Builder dependencies. Existing icons change only on explicit Update.
+
 ## 2.0.0 — First official NMScribe launch
 
 - Publish the NMScribe identity and approved branding, with five lettering styles and thirteen special characters.

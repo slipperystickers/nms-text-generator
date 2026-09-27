@@ -1,6 +1,6 @@
 # NMScribe — complete user guide
 
-NMScribe (No Man's Scribe), by FuriousFurby(FF) — 2026. Official launch v2.0 (add-on version 2.0.0).
+NMScribe (No Man's Scribe), by FuriousFurby(FF) — 2026. Official launch v2.0; SVG import hotfix 2.0.1.
 Donated to the Community by Corvette Class Builders (CCB).
 
 Create editable panel lettering and SVG silhouettes from real No Man's Sky parts,
@@ -42,6 +42,9 @@ The **Text / Icon / Sticker** switch sits immediately beneath the logo/community
 7. Save your `.blend`. The SVG source is stored with the icon, so re-editing does not depend on the original file remaining on disk. **Export Icon JSON** exports native game parts only, not the SVG, preview or parent control.
 
 ### SVG support and limitations
+
+- **One-click simplification:** simple SVGs load normally. For a complex outline, NMScribe asks **Simplify SVG?** Choose **Simplify & Import** to retrace the outline with fewer line segments, or **Cancel** to keep the current icon/settings. No separate editor, external converter or upload is needed. The original SVG file is never changed. Internally, difficult stroke/outline unions use a 2048-pixel silhouette trace before contour simplification and native panel fitting; the sidebar reports when this is used.
+- Cleanup and the panel budget are separate. Recovery may reduce sub-pixel details; the Accuracy slider and part cap can cause additional approximation afterward. Raise the part limit when the preview reports omitted detail. Neither 100% Accuracy nor successful import guarantees an exact reproduction.
 
 - Paths with lines, cubic/quadratic curves and elliptical arcs; rectangles (including rounded rectangles), circles, ellipses, polygons, polylines and lines.
 - Group transforms, internal `use` references, inline styles/presentation attributes, even-odd/nonzero holes, and simple solid strokes with common caps/joins.

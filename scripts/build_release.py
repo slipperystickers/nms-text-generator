@@ -14,7 +14,7 @@ version='.'.join(map(str,info['version']))
 out=ROOT/'dist';out.mkdir(exist_ok=True)
 instructions=build_page(out/'NMScribe_Instructions.html',version)
 launch_notes=out/f'NMScribe_{version}_Release_Notes.md'
-launch_notes.write_bytes((ROOT/'LAUNCH_NOTES.md').read_bytes())
+launch_notes.write_bytes((ROOT/'RELEASE_NOTES.md').read_bytes())
 files={p.relative_to(ROOT).as_posix():p for p in ADDON.rglob('*')
        if p.is_file() and '__pycache__' not in p.parts and p.name!='furiousfurby.png' and p.suffix in ('.py','.json','.png')}
 for name in ('README.md','USER_GUIDE.md','NOTICE.md','LICENSE','CHANGELOG.md'):
@@ -22,7 +22,7 @@ for name in ('README.md','USER_GUIDE.md','NOTICE.md','LICENSE','CHANGELOG.md'):
 files['nms_text_generator/NMScribe_Instructions.html']=instructions
 files['nms_text_generator/RELEASE_NOTES.md']=launch_notes
 assert all(p.exists() for p in files.values())
-assert len(files)==28,len(files)
+assert len(files)==29,len(files)
 archive=out/f'NMS_Text_Generator_{version}.zip'
 with ZipFile(archive,'w',ZIP_DEFLATED,compresslevel=9) as z:
     for name,path in sorted(files.items()):

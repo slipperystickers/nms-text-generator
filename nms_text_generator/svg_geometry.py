@@ -62,6 +62,7 @@ def paths(value):
         count=sizes[upper]
         if i+count>len(tokens) or any(t.isalpha() for t in tokens[i:i+count]):raise ValueError('Incomplete SVG path command.')
         p=list(map(float,tokens[i:i+count]));i+=count
+        if not all(math.isfinite(v) for v in p):raise ValueError('SVG coordinates are invalid.')
         def point(j):return np.array(p[j:j+2])+(current if relative else 0)
         if upper=='M':
             if line:out.append((line,False))
@@ -87,7 +88,17 @@ def paths(value):
             current=end.copy()
         last=upper
         if upper not in ('C','S','Q','T'):control=None
-        if sum(len(a) for a,_ in out)+len(line)>40000:raise ValueError('SVG has too many curve segments; simplify paths first.')
+        if sum(len(a) for a,_ in out)+len(line)>40000:
+            from .svg_outline import simplify_open, simplify_loop
+            def compact(points,closed):
+                arr=np.asarray(points,float)
+                if not np.isfinite(arr).all():raise ValueError('SVG coordinates are invalid.')
+                tolerance=float(np.ptp(arr,axis=0).max())*1e-6
+                return list((simplify_loop if closed else simplify_open)(arr,tolerance))
+            out=[(compact(a,closed),closed) for a,closed in out]
+            line=compact(line,False) if line else []
+            if sum(len(a) for a,_ in out)+len(line)>40000:
+                raise ValueError('SVG still has too many fine details after automatic cleanup. Try exporting a simpler silhouette.')
     if line:out.append((line,False))
     return out
 
@@ -132,7 +143,7 @@ def geometry(e):
         return [(line,True)]
     raise ValueError('Unsupported SVG element: '+kind+'. Convert it to plain paths first.')
 
-def read_svg(source):
+def read_svg(source, *, cleanup=True):
     if len(source.encode('utf-8'))>MAX_BYTES:raise ValueError('SVG is larger than 1 MB. Simplify it before import.')
     # Illustrator's external SVG 1.1 DTD is only a format declaration. Discard
     # it locally; never resolve its URL. Custom/internal entities stay forbidden.
@@ -186,6 +197,26 @@ def read_svg(source):
         if kind in ('text','image','foreignObject','script'):
             raise ValueError('SVG '+kind+' is not supported. Convert text/strokes to paths; bitmap images cannot be fitted.')
         lines=geometry(e)
+        if cleanup and lines:
+            # Remove exporter oversampling before expanding the stroke. Work in
+            # transformed coordinates so non-uniform SVG transforms do not
+            # magnify the cleanup error. Retain local coordinates for stroking.
+            from .svg_outline import simplify_open, simplify_loop
+            reduced=[]
+            for line,closed in lines:
+                arr=np.asarray(line,float)
+                if not np.isfinite(arr).all():raise ValueError('SVG coordinates are invalid.')
+                if len(arr)<4:
+                    reduced.append((line,closed));continue
+                projected=(matrix[:2,:2]@arr.T).T
+                if not np.isfinite(projected).all():raise ValueError('SVG coordinates are invalid.')
+                tolerance=float(np.ptp(projected,axis=0).max())*1e-5
+                # Simplification selects existing points; recover their local
+                # coordinates without inverting possibly singular transforms.
+                chosen=(simplify_loop if closed else simplify_open)(projected,tolerance)
+                indices={tuple(p):i for i,p in enumerate(projected)}
+                reduced.append(([arr[indices[tuple(p)]] for p in chosen],closed))
+            lines=reduced
         if painted(style.get('fill','black')) and float(style.get('fill-opacity',1))>0 and kind!='line':
             rule=style.get('fill-rule','nonzero')
             if rule not in ('nonzero','evenodd'):raise ValueError('Unsupported SVG fill rule.')
@@ -197,6 +228,16 @@ def read_svg(source):
             if half<=0:return
             cap=style.get('stroke-linecap','butt');join=style.get('stroke-linejoin','miter')
             if cap not in ('butt','square','round') or join not in ('miter','bevel','round'):raise ValueError('Unsupported stroke join/cap.')
+            stroke_contours=[];stroke_points=0
+            def stroke_add(contour):
+                nonlocal stroke_points
+                arr=np.asarray(contour,float)
+                signed=np.sum(arr[:,0]*np.roll(arr[:,1],-1)-arr[:,1]*np.roll(arr[:,0],-1))
+                if abs(signed)>1e-18:
+                    stroke_points+=len(arr)
+                    if points_used+stroke_points>100000:
+                        raise ValueError('SVG still has too many stroke details after automatic cleanup. Try exporting a simpler silhouette.')
+                    stroke_contours.append(arr if signed>0 else arr[::-1])
             for line,closed in lines:
                 clean=[]
                 for p in line:
@@ -206,23 +247,26 @@ def read_svg(source):
                 segs=[]
                 for a,b in zip(clean,clean[1:]):
                     u=(b-a)/np.linalg.norm(b-a);n=np.array([-u[1],u[0]])*half;segs.append((a,b,u,n))
-                    add([[a+n,b+n,b-n,a-n]],'nonzero',matrix)
+                    stroke_add([a+n,b+n,b-n,a-n])
                 pairs=list(zip(segs,segs[1:]))
                 if closed:pairs.append((segs[-1],segs[0]))
                 for first,second in pairs:
                     a,b,u,n=first;_,_,v,m=second
-                    if join=='round':add([circle(*b,half,half)],'nonzero',matrix);continue
+                    if join=='round':stroke_add(circle(*b,half,half));continue
                     for sign in (-1,1):
                         p=b+n*sign;q=b+m*sign;corner=[b,p,q]
                         det=u[0]*v[1]-u[1]*v[0]
                         if join=='miter' and abs(det)>1e-8:
                             d=q-p;k=(d[0]*v[1]-d[1]*v[0])/det;tip=p+u*k
                             if np.linalg.norm(tip-b)<=half*float(style.get('stroke-miterlimit',4)):corner=[b,p,tip,q]
-                        add([corner],'nonzero',matrix)
+                        stroke_add(corner)
                 if not closed:
                     for a,_,u,n in (segs[0],(segs[-1][1],None,-segs[-1][2],segs[-1][3])):
-                        if cap=='round':add([circle(*a,half,half)],'nonzero',matrix)
-                        elif cap=='square':add([[a+n,a-n,a-u*half-n,a-u*half+n]],'nonzero',matrix)
+                        if cap=='round':stroke_add(circle(*a,half,half))
+                        elif cap=='square':stroke_add([a+n,a-n,a-u*half-n,a-u*half+n])
+            # Consistent winding combines all stroke patches as one union;
+            # overlapping patches cannot cancel each other or punch out holes.
+            add(stroke_contours,'nonzero',matrix)
     visit(root,np.eye(3),{})
     if not shapes:raise ValueError('SVG has no visible filled shapes or strokes.')
     allp=np.concatenate([c for contours,_ in shapes for c in contours]);low=allp.min(0);high=allp.max(0)
@@ -236,15 +280,20 @@ def rasterize(shapes,size):
     """Pixel-centre scan conversion, holes obey each element's fill rule."""
     mask=np.zeros((size,size),bool)
     for contours,rule in shapes:
-        winding=np.zeros((size,size),np.int16)
-        xs=(np.arange(size)+.5)/size
+        points=np.concatenate(contours)
+        low=np.maximum(0,np.ceil(points.min(0)*size-.5).astype(int))
+        high=np.minimum(size,np.ceil(points.max(0)*size-.5).astype(int))
+        x0,y0=low;x1,y1=high
+        if x1<=x0 or y1<=y0:continue
+        winding=np.zeros((y1-y0,x1-x0),np.int32)
+        xs=(np.arange(x0,x1)+.5)/size
         for contour in contours:
             for p,q in zip(contour,np.roll(contour,-1,axis=0)):
                 if abs(p[1]-q[1])<1e-14:continue
-                lo=max(0,int(math.ceil(min(p[1],q[1])*size-.5)));hi=min(size,int(math.ceil(max(p[1],q[1])*size-.5)))
+                lo=max(y0,int(math.ceil(min(p[1],q[1])*size-.5)));hi=min(y1,int(math.ceil(max(p[1],q[1])*size-.5)))
                 if lo>=hi:continue
                 ys=(np.arange(lo,hi)+.5)/size
                 crossing=p[0]+(ys-p[1])*(q[0]-p[0])/(q[1]-p[1])
-                winding[lo:hi]+=(xs[None,:]<crossing[:,None])*(1 if q[1]>p[1] else -1)
-        mask|=(winding%2!=0) if rule=='evenodd' else (winding!=0)
+                winding[lo-y0:hi-y0]+=(xs[None,:]<crossing[:,None])*(1 if q[1]>p[1] else -1)
+        mask[y0:y1,x0:x1]|=(winding%2!=0) if rule=='evenodd' else (winding!=0)
     return mask

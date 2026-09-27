@@ -2,12 +2,13 @@ import importlib.util
 import sys
 import types
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 import numpy as np
 
 ROOT=Path(__file__).resolve().parents[1]/'nms_text_generator'
 pkg=types.ModuleType('svg_test_package');pkg.__path__=[str(ROOT)];sys.modules[pkg.__name__]=pkg
-from svg_test_package import svg_geometry as svg,icon_fit
+from svg_test_package import svg_geometry as svg,icon_fit,svg_outline
 
 def doc(body):return '<svg xmlns="http://www.w3.org/2000/svg">'+body+'</svg>'
 RECT=doc('<rect width="100" height="50"/>')
@@ -77,7 +78,7 @@ class SvgTests(unittest.TestCase):
         self.assertFalse(boundary.inside((.5,.5,.2,0)))
         self.assertTrue(boundary.inside((.5,.15,.1,0)))
     def test_bad_path(self):
-        for p in ['M0','M0 0X10 10','M0 0C1 1']:
+        for p in ['M0','M0 0X10 10','M0 0C1 1','M0 0L1e999 2Z']:
             with self.assertRaises(ValueError):svg.paths(p)
     def test_fit_budget_aspect_hole(self):
         result=icon_fit.fit_svg(RING,30,25)
@@ -94,5 +95,90 @@ class SvgTests(unittest.TestCase):
         source=doc('<circle cx="15" cy="15" r="15"/><circle cx="85" cy="85" r="15"/>')
         result=icon_fit.fit_svg(source,20,5);self.assertLessEqual(result['part_count'],5)
         self.assertTrue(result['budget_hit'])
+
+    def test_dense_exporter_rectangle_cleans_before_union_limit(self):
+        source=doc('<path d="M0 0'+''.join(f'C{i+.3} 0 {i+.6} 0 {i+1} 0' for i in range(501))+'V100H0Z"/>')
+        raw,_=svg.read_svg(source,cleanup=False)
+        self.assertGreater(sum(len(c) for cs,_ in raw for c in cs),12000)
+        result=icon_fit.fit_svg(source,50,30)
+        self.assertFalse(result['outline_recovered'])
+        self.assertEqual(result['cleaned_segments'],4)
+        self.assertGreater(result['coverage'],.99)
+
+    def test_curve_sampling_limit_attempts_cleanup(self):
+        source=doc('<path d="M0 0'+''.join(f'C{i+.3} 0 {i+.6} 0 {i+1} 0' for i in range(1800))+'V100H0Z"/>')
+        shapes,_=svg.read_svg(source)
+        self.assertEqual(sum(len(c) for cs,_ in shapes for c in cs),4)
+
+    def test_complex_round_stroke_recovers_under_part_cap(self):
+        points=' '.join(f'{i},{50+20*np.sin(i/20):.3f}' for i in range(140))
+        source=doc(f'<polyline points="{points}" fill="none" stroke="black" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>')
+        raw,_=svg.read_svg(source,cleanup=False)
+        self.assertGreater(sum(len(c) for cs,_ in raw for c in cs),12000)
+        result=icon_fit.fit_svg(source,50,100)
+        self.assertTrue(result['outline_recovered'])
+        self.assertGreater(result['part_count'],0)
+        self.assertLessEqual(result['part_count'],100)
+
+    def test_failed_exact_union_recovers_instead_of_rejecting(self):
+        shapes,_=svg.read_svg(RING)
+        with patch.object(icon_fit,'visible_loops',side_effect=ValueError('numeric seam')):
+            loops,info=icon_fit.prepare_outline(shapes)
+        self.assertTrue(info['outline_recovered'])
+        self.assertEqual(len(loops),2)
+        self.assertFalse(icon_fit.contains([(loops,'nonzero')],[[.5,.5]])[0])
+
+    def test_trace_handles_every_cell_case_borders_and_diagonal_contacts(self):
+        rng=np.random.default_rng(7)
+        for _ in range(8):
+            mask=rng.random((16,16))>.45
+            loops=svg_outline.trace_mask(mask)
+            restored=svg.rasterize([(loops,'nonzero')],16)
+            np.testing.assert_array_equal(restored,mask)
+        loops=svg_outline.trace_mask(np.eye(2,dtype=bool))
+        self.assertEqual(len(loops),2)
+
+    def test_recovery_keeps_hole_island_and_winding(self):
+        source=doc('<path fill-rule="evenodd" d="M0 0H100V100H0Z M20 20H80V80H20Z M40 40H60V60H40Z"/>')
+        shapes,_=svg.read_svg(source)
+        loops,_=svg_outline.recover(shapes,256)
+        self.assertEqual(len(loops),3)
+        np.testing.assert_array_equal(icon_fit.contains([(loops,'nonzero')],[[.1,.1],[.3,.3],[.5,.5]]),[True,False,True])
+        before=svg.rasterize(shapes,256);after=svg.rasterize([(loops,'nonzero')],256)
+        self.assertGreater((before&after).sum()/(before|after).sum(),.999)
+
+    def test_batched_strokes_do_not_cancel_overlaps_or_fill_holes(self):
+        source=doc('<path fill="none" stroke="white" stroke-width="5" d="M0 0H100V100H0Z M0 0V100H100V0Z"/>')
+        shapes,_=svg.read_svg(source)
+        mask=svg.rasterize(shapes,128)
+        self.assertFalse(mask[64,64]);self.assertTrue(mask[64,2])
+
+    def test_simplifier_handles_long_zigzag_without_recursion(self):
+        points=np.column_stack((np.arange(1600),np.arange(1600)%2))
+        np.testing.assert_array_equal(svg_outline.simplify_open(points,.01),points)
+
+    def test_recovery_resource_guard_stays_enabled(self):
+        yy,xx=np.mgrid[:330,:330]
+        with self.assertRaisesRegex(ValueError,'too many tiny details'):
+            svg_outline.trace_mask((xx+yy)%2==0)
+
+    def test_preflight_requests_permission_before_tracing(self):
+        points=' '.join(f'{i},{50+20*np.sin(i/20):.3f}' for i in range(140))
+        source=doc(f'<polyline points="{points}" fill="none" stroke="black" stroke-width="5" stroke-linejoin="round"/>')
+        shapes,_=svg.read_svg(source)
+        with patch.object(svg_outline,'recover',side_effect=AssertionError('Must not trace before consent')):
+            with self.assertRaises(icon_fit.SimplificationRequired):
+                icon_fit.prepare_outline(shapes,allow_simplify=False)
+
+    def test_preflight_does_not_prompt_for_simple_art(self):
+        _,_,loops,info=icon_fit.read_outline(RECT,allow_simplify=False)
+        self.assertFalse(info['outline_recovered']);self.assertEqual(len(loops),1)
+
+    def test_previous_approved_import_does_not_bypass_new_prompt(self):
+        source=doc('<path d="M0 0H100V100H0Z"/>')
+        with patch.object(icon_fit,'visible_loops',side_effect=ValueError('numeric seam')):
+            icon_fit.read_outline(source,allow_simplify=True)
+            with self.assertRaises(icon_fit.SimplificationRequired):
+                icon_fit.read_outline(source,allow_simplify=False)
 
 if __name__=='__main__':unittest.main()

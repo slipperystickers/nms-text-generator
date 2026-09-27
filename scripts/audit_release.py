@@ -6,10 +6,10 @@ from pathlib import Path
 from zipfile import ZipFile
 
 ROOT=Path(__file__).resolve().parents[1];out=ROOT/'dist'
-archive=out/'NMS_Text_Generator_2.0.0.zip'
+archive=out/'NMS_Text_Generator_2.0.1.zip'
 with ZipFile(archive) as z:
     assert z.testzip() is None
-    names=z.namelist();assert len(names)==len(set(names))==28
+    names=z.namelist();assert len(names)==len(set(names))==29
     for name in names:
         path=Path(name)
         assert path.parts[0]=='nms_text_generator' and '..' not in path.parts and not path.is_absolute()
@@ -21,11 +21,11 @@ with ZipFile(archive) as z:
             assert b'C:\\Users\\kengo' not in data and b'C:/Users/kengo' not in data
     module=ast.parse(z.read('nms_text_generator/__init__.py'))
     info=next(ast.literal_eval(n.value) for n in module.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='bl_info' for t in n.targets))
-    assert info['version']==(2,0,0)
+    assert info['version']==(2,0,1)
     assert z.read('nms_text_generator/NMScribe_Instructions.html')==(out/'NMScribe_Instructions.html').read_bytes()
     assert z.read('nms_text_generator/USER_GUIDE.md')==(ROOT/'USER_GUIDE.md').read_bytes()
-    assert z.read('nms_text_generator/RELEASE_NOTES.md')==(ROOT/'LAUNCH_NOTES.md').read_bytes()
+    assert z.read('nms_text_generator/RELEASE_NOTES.md')==(ROOT/'RELEASE_NOTES.md').read_bytes()
 for line in (out/'SHA256SUMS.txt').read_text().splitlines():
     digest,name=line.split('  ',1)
     assert hashlib.sha256((out/name).read_bytes()).hexdigest()==digest
-print(json.dumps({'status':'LAUNCH_ARTIFACT_AUDIT_PASSED','version':'2.0.0','files':len(names),'zip_bytes':archive.stat().st_size},indent=2))
+print(json.dumps({'status':'LAUNCH_ARTIFACT_AUDIT_PASSED','version':'2.0.1','files':len(names),'zip_bytes':archive.stat().st_size},indent=2))
