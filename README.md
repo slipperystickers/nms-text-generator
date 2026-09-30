@@ -1,4 +1,4 @@
-<a href="[https://example.com](https://buymeacoffee.com/furiousfurby)" class="btn">Buy me a coffee</a>
+<a href="https://buymeacoffee.com/furiousfurby" class="btn">Buy me a coffee</a>
 
 # NMScribe — No Man's Scribe for Blender Base Builder
 
