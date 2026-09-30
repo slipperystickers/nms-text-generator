@@ -1,5 +1,4 @@
-<a href="https://buymeacoffee.com/furiousfurby" class="btn">Buy me a coffee</a>
-<button onclick="window.location.href='https://buymeacoffee.com/furiousfurby';">Buy me a coffee</button>
+
 
 # NMScribe — No Man's Scribe for Blender Base Builder
 
