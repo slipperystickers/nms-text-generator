@@ -1,4 +1,4 @@
-<script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="FuriousFurby" data-color="#7601ad" data-emoji=""  data-font="Comic" data-text="Buy me a coffee" data-outline-color="#ffffff" data-font-color="#ffffff" data-coffee-color="#FFDD00" ></script>
+[<script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="FuriousFurby" data-color="#7601ad" data-emoji=""  data-font="Comic" data-text="Buy me a coffee" data-outline-color="#ffffff" data-font-color="#ffffff" data-coffee-color="#FFDD00" ></script>](https://media.giphy.com/media/513lZvPf6khjIQFibF/giphy.gif)
 
 # NMScribe — No Man's Scribe for Blender Base Builder
 
