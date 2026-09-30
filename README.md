@@ -1,4 +1,8 @@
-
+<a href="https://www.buymeacoffee.com/furiousfurby">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png"
+       alt="Buy Me a Coffee"
+       height="50">
+</a>
 
 # NMScribe — No Man's Scribe for Blender Base Builder
 
