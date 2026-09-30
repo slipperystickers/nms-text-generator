@@ -1,5 +1,6 @@
 <a href="https://buymeacoffee.com/furiousfurby" class="btn">Buy me a coffee</a>
-<button onclick="window.location.href='[https://example.com](https://buymeacoffee.com/furiousfurby)';">Buy me a coffee</button>
+<button onclick="window.location.href='https://buymeacoffee.com/furiousfurby';">Buy me a coffee</button>
+
 # NMScribe — No Man's Scribe for Blender Base Builder
 
 Build editable No Man's Sky lettering from native Flat Panels or Storage Panel backs, with five
