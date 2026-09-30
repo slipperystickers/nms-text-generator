@@ -1,4 +1,8 @@
-[<script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="FuriousFurby" data-color="#7601ad" data-emoji=""  data-font="Comic" data-text="Buy me a coffee" data-outline-color="#ffffff" data-font-color="#ffffff" data-coffee-color="#FFDD00" ></script>](https://media.giphy.com/media/513lZvPf6khjIQFibF/giphy.gif)
+<a href="https://www.buymeacoffee.com/furiousfurby">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/blue-button.png"
+       alt="Buy Me a Coffee"
+       height="50">
+</a>
 
 # NMScribe — No Man's Scribe for Blender Base Builder
 
