@@ -12,6 +12,9 @@ from . import svg_outline
 from .svg_outline import simplify_open, simplify_loop
 
 RATIO=3.0078125/1.260742425918579
+# Storage backs are uniformly calibrated to the Flat Panel's long dimension.
+# Their short dimension is slightly smaller; ideal rectangles hide these seams.
+FACE_SHORT=1.250976800918579*(3.0078125/2.9921875)/1.260742425918579
 
 
 class SimplificationRequired(ValueError):
@@ -41,7 +44,7 @@ def contains(shapes,points):
     return result
 
 
-def visible_loops(shapes):
+def visible_loops(shapes,point_test=None):
     """Split vector intersections; discard edges internal to overlapping fills.
 
     Directed edges keep material on the left, including clockwise hole rings.
@@ -63,7 +66,8 @@ def visible_loops(shapes):
     a=np.array([p for p,q in pieces]);b=np.array([q for p,q in pieces]);d=b-a
     normal=np.column_stack((-d[:,1],d[:,0]));normal/=np.linalg.norm(normal,axis=1)[:,None]
     mid=(a+b)/2
-    left=contains(shapes,mid+normal*1e-7);right=contains(shapes,mid-normal*1e-7)
+    test=point_test if point_test is not None else lambda p:contains(shapes,p)
+    left=test(mid+normal*1e-7);right=test(mid-normal*1e-7)
     edges={}
     def key(p):return tuple(np.round(p,8))
     for p,q,l,r in zip(a,b,left,right):
@@ -191,6 +195,185 @@ def panel_mask(panel,xx,yy,inset=False):
     return (abs(c*dx+s*dy)<=w*RATIO/2*long_factor+1e-10)&(abs(-s*dx+c*dy)<=w/2*short_factor+1e-10)
 
 
+def enlarge_fill(boundary,panels,edge_count):
+    """Grow existing fill rectangles before spending parts on their seams.
+
+    A fixed corner/edge/centre keeps the entire old rectangle inside the new
+    one. Every candidate uses uniform scale and the full vector boundary test.
+    Thus growth cannot uncover an old area, cross a hole, or move an outline.
+    """
+    grown=0
+    for i in range(edge_count,len(panels)):
+        x,y,w,a=panels[i];c,s=math.cos(a),math.sin(a)
+        best=panels[i]
+        for u,v in ((0,0),(-1,0),(1,0),(0,-1),(0,1),(-1,-1),(-1,1),(1,-1),(1,1)):
+            dx=(u*c*RATIO-v*s)/2;dy=(u*s*RATIO+v*c)/2
+            def candidate(width):return (x+dx*(width-w),y+dy*(width-w),width,a)
+            low=w;high=w*2
+            while high<w*16 and boundary.inside(candidate(high)):low=high;high*=2
+            for _ in range(12):
+                mid=(low+high)/2
+                if boundary.inside(candidate(mid)):low=mid
+                else:high=mid
+            if low>best[2]*(1+1e-5):best=candidate(low)
+        if best[2]>w*(1+1e-5):panels[i]=best;grown+=1
+    return grown
+
+
+def panel_corners(panel,inset=False):
+    x,y,w,a=panel;c,s=math.cos(a),math.sin(a)
+    u=np.array([c,s])*w*RATIO/2*(.984 if inset else 1)
+    v=np.array([-s,c])*w/2*(.967 if inset else 1)
+    return np.array([np.array([x,y])+su*u+sv*v for su,sv in ((-1,-1),(1,-1),(1,1),(-1,1))])
+
+
+def subtract_convex(subject,clip):
+    """Exact polygon fragments left after covering with a convex rectangle."""
+    remaining=[];inside=subject
+    for a,b in zip(clip,np.roll(clip,-1,axis=0)):
+        if len(inside)<3:break
+        dist=cross(b-a,inside-a);positive=[];negative=[]
+        for p,q,dp,dq in zip(inside,np.roll(inside,-1,axis=0),dist,np.roll(dist,-1)):
+            (positive if dp>=-1e-12 else negative).append(p)
+            if (dp>=-1e-12)!=(dq>=-1e-12):
+                point=p+(q-p)*dp/(dp-dq);positive.append(point);negative.append(point)
+        if len(negative)>=3:
+            polygon=np.array(negative)
+            if abs(cross(polygon,np.roll(polygon,-1,axis=0)).sum())>1e-13:remaining.append(polygon)
+        inside=np.array(positive)
+    return remaining
+
+
+def prune_contained(panels,edge_count,later_only=False,kept_indices=None):
+    """Remove redundant fills covered by neighbours, retaining every outline.
+
+    Polygon subtraction proves collective coverage, not just a pixel/corner
+    sample. Conservative inner faces leave overlap for native panel bevels.
+    """
+    if not panels:return 0
+    keep=np.ones(len(panels),bool);removed=0
+    corners=[panel_corners(p) for p in panels]
+    inner=[panel_corners(p,True) for p in panels]
+    lows=np.array([p.min(0) for p in inner]);highs=np.array([p.max(0) for p in inner])
+    for i in sorted(range(edge_count,len(panels)),key=lambda i:(panels[i][2],-i)):
+        rectangle=corners[i];low=rectangle.min(0);high=rectangle.max(0)
+        neighbors=np.flatnonzero(keep&np.all((lows<=high)&(highs>=low),axis=1))
+        neighbors=sorted((j for j in neighbors if j!=i and (not later_only or j>i)),key=lambda j:-panels[j][2])
+        probes=np.concatenate((rectangle,(rectangle+np.roll(rectangle,-1,axis=0))/2,[rectangle.mean(0)]))
+        covered=np.zeros(len(probes),bool)
+        for j in neighbors:covered|=panel_mask(panels[j],probes[:,0],probes[:,1],inset=True)
+        if not covered.all():continue
+        fragments=[rectangle]
+        for j in neighbors:
+            fragments=[piece for fragment in fragments for piece in subtract_convex(fragment,inner[j])]
+            if not fragments:
+                keep[i]=False;removed+=1;break
+            if len(fragments)>128:break  # Retain the part if proof becomes expensive.
+    if kept_indices is not None:kept_indices.extend(np.flatnonzero(keep).tolist())
+    panels[:]=[p for i,p in enumerate(panels) if keep[i]]
+    return removed
+
+
+def exposed_face_points(panels):
+    """Probe every exposed native-face edge interval without a pixel grid.
+
+    Clip each edge against neighbouring rectangles. The intervals left over
+    border the union, including cracks too thin to land on a raster sample.
+    A point just outside each interval is classified against the target later.
+    """
+    if not panels:return np.empty((0,2))
+    values=np.asarray(panels,float);centres=values[:,:2];widths=values[:,2]
+    c=np.cos(values[:,3]);s=np.sin(values[:,3])
+    u=np.column_stack((c,s));v=np.column_stack((-s,c))
+    half=np.column_stack((widths*RATIO/2,widths*FACE_SHORT/2))
+    quads=np.array([centres+su*u*half[:,0,None]+sv*v*half[:,1,None]
+                    for su,sv in ((-1,-1),(1,-1),(1,1),(-1,1))]).transpose(1,0,2)
+    lows=quads.min(1);highs=quads.max(1);points=[]
+    for i,quad in enumerate(quads):
+        for p,q in zip(quad,np.roll(quad,-1,axis=0)):
+            edge=q-p;length=float(np.linalg.norm(edge))
+            if length<1e-9:continue
+            normal=np.array([edge[1],-edge[0]])/length
+            # Clip just outside this face: coincident aligned edges must not
+            # hide each other from the material side.
+            probe=p+normal*1e-8
+            ids=np.flatnonzero(np.all((lows<=np.maximum(p,q)+1e-7)&(highs>=np.minimum(p,q)-1e-7),axis=1))
+            ids=ids[ids!=i]
+            delta=probe-centres[ids]
+            origin=np.column_stack((np.sum(delta*u[ids],1),np.sum(delta*v[ids],1)))
+            direction=np.column_stack((u[ids]@edge,v[ids]@edge))
+            lo=np.zeros(len(ids));hi=np.ones(len(ids));possible=np.ones(len(ids),bool)
+            for axis in (0,1):
+                moving=abs(direction[:,axis])>1e-14
+                safe=np.where(moving,direction[:,axis],1)
+                t0=(-half[ids,axis]-origin[:,axis])/safe;t1=(half[ids,axis]-origin[:,axis])/safe
+                lo=np.maximum(lo,np.where(moving,np.minimum(t0,t1),-np.inf))
+                hi=np.minimum(hi,np.where(moving,np.maximum(t0,t1),np.inf))
+                possible&=moving|(abs(origin[:,axis])<=half[ids,axis]+1e-12)
+            cursor=0.
+            for start,end in sorted(zip(lo[possible&(hi>lo)],hi[possible&(hi>lo)])):
+                if start>cursor+1e-8:points.append(probe+edge*(cursor+start)/2)
+                cursor=max(cursor,end)
+            if cursor<1-1e-8:points.append(probe+edge*(cursor+1)/2)
+    return np.asarray(points).reshape(-1,2)
+
+
+def boundary_distances(boundary,points):
+    distances=np.empty(len(points));nearest=np.empty(len(points),int)
+    d=boundary.b-boundary.a;dd=np.sum(d*d,axis=1)
+    for start in range(0,len(points),256):
+        delta=points[start:start+256,None,:]-boundary.a[None,:,:]
+        t=np.clip(np.sum(delta*d,axis=2)/np.maximum(dd,1e-24),0,1)
+        squared=np.sum((delta-t[:,:,None]*d)**2,axis=2)
+        nearest[start:start+256]=squared.argmin(1)
+        distances[start:start+256]=np.sqrt(squared.min(1))
+    return distances,nearest
+
+
+def face_segments_blocked(panels,starts,ends):
+    """Whether material separates a seam probe from its nearest contour."""
+    starts=np.asarray(starts,float);ends=np.asarray(ends,float)
+    values=np.asarray(panels,float);centres=values[:,:2];w=values[:,2]
+    c=np.cos(values[:,3]);s=np.sin(values[:,3]);result=[]
+    for start,end in zip(starts,ends):
+        delta=start-centres;edge=end-start
+        origin=np.column_stack((c*delta[:,0]+s*delta[:,1],-s*delta[:,0]+c*delta[:,1]))
+        direction=np.column_stack((c*edge[0]+s*edge[1],-s*edge[0]+c*edge[1]))
+        half=np.column_stack((w*RATIO/2,w*FACE_SHORT/2))
+        lo=np.zeros(len(w));hi=np.ones(len(w));possible=np.ones(len(w),bool)
+        for axis in (0,1):
+            moving=abs(direction[:,axis])>1e-14;safe=np.where(moving,direction[:,axis],1)
+            t0=(-half[:,axis]-origin[:,axis])/safe;t1=(half[:,axis]-origin[:,axis])/safe
+            lo=np.maximum(lo,np.where(moving,np.minimum(t0,t1),-np.inf))
+            hi=np.minimum(hi,np.where(moving,np.maximum(t0,t1),np.inf))
+            possible&=moving|(abs(origin[:,axis])<half[:,axis]-1e-12)
+        result.append(bool(np.any(possible&(hi>lo+1e-6))))
+    return np.asarray(result,bool)
+
+
+def expand_face_to_point(boundary,panel,point):
+    """Move and uniformly enlarge a face while retaining its entire old face."""
+    x,y,w,a=panel;c,s=math.cos(a),math.sin(a)
+    axes=np.array([[c,-s],[s,c]]);local=(np.asarray(point).reshape(-1,2)-[x,y])@axes
+    factors=np.array([RATIO,FACE_SHORT]);old_half=w*factors/2
+    margin=max(2e-6,w*.015)
+    low=np.minimum(-old_half,local.min(0)-margin);high=np.maximum(old_half,local.max(0)+margin)
+    required=max(w,float(np.max((high-low)/factors)))
+    if required>w*2.5:return None
+    for width in required*np.array([1.000001,1.005,1.02,1.06,1.15,1.35]):
+        half=width*factors/2
+        start=high-half;end=low+half
+        if np.any(start>end+1e-12):continue
+        choices=[np.unique([start[j],end[j],(start[j]+end[j])/2,np.clip(0,start[j],end[j])]) for j in (0,1)]
+        candidates=[(u,v) for u in choices[0] for v in choices[1]]
+        candidates.sort(key=lambda uv:uv[0]**2+uv[1]**2)
+        for uv in candidates:
+            centre=np.array([x,y])+np.array(uv)@axes.T
+            candidate=(*centre,float(width),a)
+            if boundary.inside(candidate):return candidate
+    return None
+
+
 def fill_interior(boundary,target,panels,n,limit):
     yy,xx=np.mgrid[:n,:n];xx=(xx+.5)/n;yy=(yy+.5)/n
     covered=np.zeros_like(target)
@@ -233,7 +416,7 @@ def fill_interior(boundary,target,panels,n,limit):
     return covered,remaining
 
 
-def close_gaps(boundary,panels,size,limit,tolerance,edge_count):
+def close_gaps(boundary,panels,size,limit,tolerance,edge_count,follow_edges=False,coverage_goal=None):
     """Oversampled cleanup with off-grid overlapping panels.
 
     A raster is used only to find uncovered locations. Panel position/scale are
@@ -245,20 +428,35 @@ def close_gaps(boundary,panels,size,limit,tolerance,edge_count):
     covered=np.zeros_like(target)
     for i,panel in enumerate(panels):covered|=panel_mask(panel,xx,yy,inset=i>=edge_count)
     iy,ix=np.nonzero(target&~covered)
-    points=np.column_stack((xx[iy,ix],yy[iy,ix]));dist=np.empty(len(points))
+    points=np.column_stack((xx[iy,ix],yy[iy,ix]));dist=np.empty(len(points));nearest=np.empty(len(points),np.int32)
     d=boundary.b-boundary.a;dd=np.sum(d*d,axis=1)
     for start in range(0,len(points),256):
         delta=points[start:start+256,None,:]-boundary.a[None,:,:]
         t=np.clip(np.sum(delta*d,axis=2)/np.maximum(dd,1e-24),0,1)
-        dist[start:start+256]=np.sqrt(np.sum((delta-t[:,:,None]*d)**2,axis=2).min(axis=1))
+        distances=np.sum((delta-t[:,:,None]*d)**2,axis=2)
+        nearest[start:start+256]=distances.argmin(axis=1)
+        dist[start:start+256]=np.sqrt(distances.min(axis=1))
     # A minute rim at the contour is native bevel, not an interior hole. Filling
     # it would require panels outside the contour or an unbounded tiny-part tail.
     available=dist>min(tolerance*.5,.0005)
+    visible_missing=np.ones(len(points),bool)
     while available.any() and len(panels)<limit:
-        idx=int(np.argmax(np.where(available,dist,-1)));x,y=points[idx]
+        idx=int(np.argmax(np.where(available,dist,-1)))
+        if follow_edges:
+            # Long rectangular interiors have a plateau of equally deep points.
+            # Choosing its first raster row clips a large panel at the end of
+            # the shape. Start near the centre instead, keeping placement stable.
+            ties=np.flatnonzero(available&(dist>=dist[idx]-1e-9))
+            centre=(points.min(0)+points.max(0))/2
+            idx=int(ties[np.argmin(np.sum((points[ties]-centre)**2,axis=1))])
+        x,y=points[idx]
         if dist[idx]<1e-7:available[idx]=False;continue
         best=None;largest=0
-        for angle in (0,math.pi/4,math.pi/2,3*math.pi/4):
+        angles=(0,math.pi/4,math.pi/2,3*math.pi/4)
+        if follow_edges:
+            edge=d[nearest[idx]];tangent=math.atan2(edge[1],edge[0])
+            angles=(tangent,tangent+math.pi/2)+angles
+        for angle in angles:
             lo=dist[idx]*1.999/math.sqrt(1+RATIO*RATIO);hi=dist[idx]*2
             for _ in range(13):
                 width=(lo+hi)/2
@@ -267,13 +465,41 @@ def close_gaps(boundary,panels,size,limit,tolerance,edge_count):
             if lo>largest:largest=lo;best=(x,y,lo,angle)
         panels.append(best)
         available&=~panel_mask(best,points[:,0],points[:,1],inset=True)
+        if coverage_goal is not None:
+            visible_missing&=~panel_mask(best,points[:,0],points[:,1])
+            if visible_missing.sum()<=len(points)*(1-coverage_goal):break
     return bool(available.any())
 
 
 def fit_svg(source,accuracy=50,max_parts=300):
     accuracy=max(0,min(100,int(accuracy)));max_parts=max(1,min(2000,int(max_parts)))
     shapes,bounds,loops,cleanup=read_outline(source)
-    tolerance=.004*(.15**(accuracy/100))
+    return fit_outline(shapes,bounds,loops,cleanup,accuracy,max_parts)
+
+
+def fit_outline(shapes,bounds,loops,cleanup,accuracy=50,max_parts=300,fill_first=False,coverage_goal=None,outline_tolerance=None,optimize_fill=False):
+    """Fit a visible colour region in the artwork's shared coordinate space."""
+    tolerance=.004*(.15**(accuracy/100)) if outline_tolerance is None else outline_tolerance
+    if fill_first:
+        # Visible colour regions have many disconnected rims and braces. Fit
+        # their solid interiors against the original boundary, following the
+        # nearest edge's angle, before the part cap can be spent on contours.
+        boundary=Boundary(loops);panels=[];n=128+round(accuracy*1.28)
+        reference=svg_geometry.rasterize(shapes,n)
+        if not reference.any():raise ValueError('No visible SVG area at this accuracy. Increase accuracy or simplify the artwork.')
+        unfilled=close_gaps(boundary,panels,256+round(accuracy*1.28),max_parts,tolerance,0,follow_edges=True,coverage_goal=coverage_goal)
+        if not panels:raise ValueError('Shape details are too thin. Increase accuracy or expand strokes.')
+        yy,xx=np.mgrid[:n,:n];covered=np.zeros_like(reference)
+        for panel in panels:covered|=panel_mask(panel,(xx+.5)/n,(yy+.5)/n)
+        preview=np.empty((n,n,4),np.float32);preview[:]=(.055,.065,.08,1)
+        preview[reference]=(.55,.19,.19,1);preview[covered]=(.95,.69,.28,1)
+        return {**cleanup,'panels':panels,'part_count':len(panels),
+                'coverage':float((covered&reference).sum()/max(1,reference.sum())),
+                'excess':float((covered&~reference).sum()/max(1,reference.sum())),
+                'bounds':bounds,'resolution':n,'preview':preview,'outline_parts':0,
+                '_fill_loops':[c.tolist() for c in boundary.loops],
+                'outline_tolerance':tolerance,'outline_omissions':0,'outline_relaxed':False,
+                'unfilled':unfilled,'budget_hit':len(panels)>=max_parts and unfilled}
     # Keep budget available for filling. Relax an over-budget contour as a whole
     # instead of chopping random edges from the logo.
     relaxed=False
@@ -284,13 +510,18 @@ def fit_svg(source,accuracy=50,max_parts=300):
         if retry<6:tolerance*=1.6;relaxed=True
     if len(panels)>max_parts:
         panels=sorted(panels,key=lambda p:p[2],reverse=True)[:max_parts];relaxed=True
-    edge_count=len(panels)
     n=128+round(accuracy*1.28)
     target=svg_geometry.rasterize(boundary.shapes,n)
     reference=svg_geometry.rasterize(shapes,n)
     if not target.any():raise ValueError('No visible SVG area at this accuracy. Increase accuracy or simplify the artwork.')
+    edge_count=len(panels)
     covered,remaining=fill_interior(boundary,target,panels,n,max_parts)
-    unfilled=close_gaps(boundary,panels,512+round(accuracy*2.56),max_parts,tolerance,edge_count)
+    grown=removed=0
+    if optimize_fill:
+        grown=enlarge_fill(boundary,panels,edge_count)
+        removed=prune_contained(panels,edge_count)
+    unfilled=close_gaps(boundary,panels,512+round(accuracy*2.56),max_parts,tolerance,edge_count,follow_edges=optimize_fill)
+    if optimize_fill:removed+=prune_contained(panels,edge_count)
     if not panels:raise ValueError('Shape details are too thin. Increase accuracy or expand strokes.')
     yy,xx=np.mgrid[:n,:n];covered=np.zeros_like(target)
     for panel in panels:covered|=panel_mask(panel,(xx+.5)/n,(yy+.5)/n)
@@ -299,7 +530,9 @@ def fit_svg(source,accuracy=50,max_parts=300):
     preview=np.empty((n,n,4),np.float32);preview[:]=(.055,.065,.08,1)
     preview[reference]=(.55,.19,.19,1);preview[covered]=(.95,.69,.28,1)
     return {**cleanup,'panels':panels,'part_count':len(panels),'coverage':coverage,'excess':excess,
+            '_fill_loops':[c.tolist() for c in boundary.loops],
             'bounds':bounds,'resolution':n,'preview':preview,'outline_parts':edge_count,
             'outline_tolerance':tolerance,'outline_omissions':omitted,
             'outline_relaxed':relaxed,'unfilled':unfilled,
-            'budget_hit':relaxed or (len(panels)>=max_parts and unfilled)}
+            'budget_hit':relaxed or (len(panels)>=max_parts and unfilled),
+            'grown_parts':grown,'removed_parts':removed}

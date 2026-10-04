@@ -1,4 +1,83 @@
+## 2.2.8 - Highlighted Generate and reliable circles
+
+- Larger, theme-accent Generate Text and Generate Icon buttons.
+- Around curve angle moves existing artwork around closed curves; saved with the artwork and retained through rebuilds.
+- Normalize interpolated curve rotations to prevent false stretched-text errors on Bezier circles.
+- Use a shared tangent at closed-curve endpoints for a clean circular seam.
+- Retain strict native export checks for genuine non-uniform scale.
+
+## 2.2.7 - Select artwork and curve, then Follow Curve
+
+- Replace sidebar curve checkboxes/pickers with a Follow Curve action for existing generated text and icons. Select the artwork's panels or control plus exactly one curve; either may be active.
+- Preserve existing native panels, colours, materials and local edits. Keep letters rigid, place icon panels along the path, avoid cumulative bending on repeated clicks, and support undo and Restore Flat Layout.
+- Collapse optional fit-to-length, reverse direction and facing controls under Curve Options. Saved curve references survive renaming/reopening and are reapplied when artwork is rebuilt.
+- Default Match colours to off for fresh settings. Existing saved explicit colour choices remain intact. New generation starts flat; legacy curve recipes remain readable.
+
+## 2.2.6 - Responsive previews and silhouette priority
+
+- Icon and text previews run in isolated bundled-Python processes, with an animated activity bar, stage text and elapsed time. Settings changes cancel stale jobs; imports keep the previous source until validation succeeds.
+- Detailed layered SVGs reserve capacity for the source layer owning the most silhouette boundary. That layer cannot switch to fill-first fitting. Candidate selection also measures silhouette-edge coverage; complex SVGs can try solid backing/inlays.
+- The 600-part detailed industrial emblem now uses 573 parts: sampled edge coverage 31.2% to 73.3%, silhouette fill 87.4% to 95.1%, correct-colour coverage 67.9% to 70.7%. Fine internal detail remains limited; this is not a claim of complete reproduction.
+
 # Changelog
+
+## 2.2.5 — Audit native seams after final fitting
+
+- Inspect exposed native face-edge intervals after fitting and pruning, including cracks that fall between preview pixels and the Storage back's slightly narrower calibrated face.
+- Reserve up to 12 parts within the selected limit for final seam repair. Prefer moving and uniformly growing existing faces while preserving their previous coverage; enlarge new repairs into the interior instead of making tiny stacks at an edge.
+- Distinguish internal cracks from the native outer rim. Repairs must remain inside the fitted contour and the visible source colour, preserving intentional holes and coherent faceted edges.
+- Retain paint-layer depth order after repairs and compute final native surface heights from the resulting panel scales.
+- Add the girder SVG as a regression with 1,531 known native-gap samples, alongside geometric checks for subpixel cracks, coverage-preserving growth and rim classification.
+
+## 2.2.4 — Grow interior fills and remove hidden parts
+
+- Enlarge existing interior panels with uniform scale before adding gap fillers. Exact vector containment protects outer edges and transparent holes.
+- Align gap fillers with nearby contour angles, instead of restricting every filler to horizontal, vertical or 45-degree directions.
+- Remove redundant panels only after polygon subtraction proves that neighbouring native faces cover them. Hidden backing parts may be removed only when later paint covers them completely.
+- Preserve contour placement, native part proportions, painter order, raised colour layers and the hard part cap. Surface heights are computed after final fitting and scaling.
+- Add regressions for hole-safe growth, collective coverage, tiny uncovered pockets and foreground colour preservation.
+
+## 2.2.3 — Restore outline priority for coloured icons
+
+- Trace coloured shapes with aligned edge panels before filling their interiors. Straight SVG edges stay straight; curves use coherent polygon segments as the budget requires.
+- Apply curve tolerance in the whole artwork's coordinates, so small details do not consume the budget at disproportionate precision.
+- Reuse spare capacity for actual interior gaps instead of stopping from area coverage alone. Preserve solid backing, raised colour inlays, fixed panel proportions and the global part cap.
+- Add regression checks for a continuous flat beam and a bounded circular silhouette, in addition to area coverage.
+
+## 2.2.2 — Solid backing and colour overlays
+
+- Compare separate colour regions, original painter layers, and a continuous backing with colour inlays. Choose layering when it improves coverage or uses fewer parts at comparable coverage.
+- Preserve transparent holes and source colours; missing foreground paint is counted as missing coverage.
+- Fit small disconnected details in their own coordinates so hooks and other small shapes do not share the whole emblem's coarse sampling grid.
+- Stop spending parts on near-complete fills, reuse spare capacity on incomplete layers, and keep explicit bounded depth steps between colour layers.
+
+## 2.2.1 — Complex coloured SVG fitting repair
+
+- Fill solid colour areas before the part budget can be exhausted by outlines. Use local edge angles for curved and diagonal features. Preserve layered painter order for complex artwork and keep the global part cap.
+- Show actual filled coverage for incomplete fits; Accuracy is a detail control, not a guarantee of coverage. For layered artwork, coverage also checks the final palette so missing foreground paint cannot be hidden by a background layer.
+- Keep existing monochrome fitting, source preservation, native panels, curve placement and builder adapters.
+
+## 2.2.0 — Curve placement and compact SVG controls
+
+- Move Generate directly below Import; remove sidebar diagnostics and mapping lists. Colours opens a scrollable dialog with source swatches, NMS palette families and colour swatch dropdowns. Icon Options and Fit Details have separate popouts.
+- Save per-source colour overrides with the icon; use them in fitting, preview, generation, updates and native export. Automatic remains available for every source colour; Cancel leaves choices unchanged.
+- Follow a Blender Bezier, Poly or NURBS curve with text or icons, including closed paths. Keep each letter rigid; bend icons by positioning their rigid panels. Optional fitting uniformly scales artwork to the path length. Preserve native panel dimensions, colours and exports.
+- Keep old saved text/icons unchanged and retain the existing Base Builder and Forge adapters.
+
+## 2.1.0 — SVG colour matching
+
+- Match opaque solid SVG fills/strokes to the closest native primary palette using perceptual Oklab distance. Preserve visible painter order, holes, colour boundaries, shared artwork placement and one hard part cap.
+- Preview estimated matched colours and expose the palette codes; retain the original silhouette mode and old saved-icon behavior.
+- Include all 151 current base-building palettes in the offline snapshot. Station entries 115–150 are an opt-in until their panel-face appearance is validated in game.
+- Keep all native builder adapters. When stock 6.5.2 has no Forge hooks, enabling Forge now retains the working stock generation/export path.
+- Retain simplification approval, source preservation, atomic replacement, native JSON export and separate Text/Icon ownership.
+
+## 2.0.2 — Base Builder 6.x compatibility hotfix
+
+- Restore support for official/Nexus Base Builder 6.x releases, including 6.5.2, which expose the active native builder as the package-level `BUILDER` object.
+- Continue supporting the legacy HD API, the newer standard builder hooks and optional Charon Forge without modifying any dependency.
+- Validate the discovered builder, part factory, native transform/export methods and panel model paths before NMScribe creates objects.
+- Preserve all 2.0.1 SVG cleanup behavior and existing Text/Icon settings.
 
 ## 2.0.1 — SVG import cleanup hotfix
 

@@ -15,7 +15,8 @@ def enable_dependencies():
         sys.path.insert(0, str(folder.parent))
         extra = os.environ.get('NMS_TEXT_TEST_DEPS')
         if extra:
-            sys.path.insert(0, extra)
+            # Dependency paths must not shadow the explicitly selected host.
+            sys.path.append(extra)
         addon_utils.modules(refresh=True)
         base = folder.name
     else:

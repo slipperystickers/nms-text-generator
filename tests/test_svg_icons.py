@@ -77,6 +77,66 @@ class SvgTests(unittest.TestCase):
         boundary=icon_fit.Boundary(icon_fit.visible_loops(svg.read_svg(source)[0]))
         self.assertFalse(boundary.inside((.5,.5,.2,0)))
         self.assertTrue(boundary.inside((.5,.15,.1,0)))
+
+    def test_fill_growth_retains_coverage_and_respects_a_hole(self):
+        boundary=icon_fit.Boundary(icon_fit.visible_loops(svg.read_svg(RING)[0]))
+        panels=[(.35,.15,.07,0),(.65,.85,.07,0)]
+        original=[icon_fit.panel_corners(p) for p in panels]
+        self.assertGreater(icon_fit.enlarge_fill(boundary,panels,0),0)
+        for panel,corners in zip(panels,original):
+            self.assertTrue(boundary.inside(panel))
+            self.assertTrue(icon_fit.panel_mask(panel,corners[:,0],corners[:,1]).all())
+        self.assertFalse(any(icon_fit.panel_mask(p,np.array([.5]),np.array([.5]))[0] for p in panels))
+
+    def test_collective_pruning_keeps_outline_and_rejects_a_gap(self):
+        panels=[(-.2,0,.3,0),(.2,0,.3,0),(0,0,.2,0)]
+        outline=list(panels[:2])
+        self.assertEqual(icon_fit.prune_contained(panels,2),1)
+        self.assertEqual(panels,outline)
+        gap=[(-.38,0,.3,0),(.38,0,.3,0),(0,0,.2,0)]
+        self.assertEqual(icon_fit.prune_contained(gap,2),0)
+
+    def test_polygon_coverage_proof_retains_a_tiny_internal_hole(self):
+        def rect(x0,y0,x1,y1):return np.array([[x0,y0],[x1,y0],[x1,y1],[x0,y1]],float)
+        fragments=[rect(0,0,1,1)]
+        # The uncovered pocket misses all rectangle corner/midpoint probes.
+        for cover in (rect(0,0,.61,1),rect(.63,0,1,1),rect(0,0,1,.31),rect(0,.33,1,1)):
+            fragments=[p for f in fragments for p in icon_fit.subtract_convex(f,cover)]
+        area=sum(abs(icon_fit.cross(p,np.roll(p,-1,axis=0)).sum())/2 for p in fragments)
+        self.assertAlmostEqual(area,.02*.02,places=10)
+
+    def test_exposed_native_edges_exclude_covered_parallel_and_rotated_faces(self):
+        for angle in (0,.37,np.pi/2):
+            panels=[(.5,.5,.2,angle),(.5,.5,.1,angle)]
+            points=icon_fit.exposed_face_points(panels)
+            self.assertEqual(len(points),4)
+            c,s=np.cos(angle),np.sin(angle);delta=points-[.5,.5]
+            inside=(abs(delta[:,0]*c+delta[:,1]*s)<.2*icon_fit.RATIO/2)&(abs(-delta[:,0]*s+delta[:,1]*c)<.2*icon_fit.FACE_SHORT/2)
+            self.assertFalse(inside.any())
+
+    def test_exposed_native_edges_find_a_crack_smaller_than_a_preview_pixel(self):
+        width=.2;gap=2e-6
+        panels=[(.5,.4,width,0),(.5,.4+width*icon_fit.FACE_SHORT+gap,width,0)]
+        lower=.4+width*icon_fit.FACE_SHORT/2
+        points=icon_fit.exposed_face_points(panels)
+        self.assertTrue(np.any((points[:,1]>lower)&(points[:,1]<lower+gap)))
+
+    def test_native_rim_has_a_clear_exit_but_an_internal_seam_is_blocked(self):
+        panels=[(.5,.5,.2,0)]
+        self.assertEqual(icon_fit.face_segments_blocked(panels,[[.5,.399]],[[.5,.398]]).tolist(),[False])
+        self.assertEqual(icon_fit.face_segments_blocked(panels,[[.5,.399]],[[.5,.601]]).tolist(),[True])
+
+    def test_face_growth_preserves_the_old_native_face_and_intentional_holes(self):
+        boundary=icon_fit.Boundary([np.array([[0,0],[1,0],[1,1],[0,1]],float)])
+        old=(.3,.3,.1,0);point=np.array([.5,.3])
+        grown=icon_fit.expand_face_to_point(boundary,old,point)
+        self.assertIsNotNone(grown);self.assertTrue(boundary.inside(grown))
+        corners=icon_fit.panel_corners(old);corners[:,1]=.3+(corners[:,1]-.3)*icon_fit.FACE_SHORT
+        probes=np.vstack((corners,point));x,y,w,a=grown
+        self.assertTrue((abs(probes[:,0]-x)<=w*icon_fit.RATIO/2+1e-10).all())
+        self.assertTrue((abs(probes[:,1]-y)<=w*icon_fit.FACE_SHORT/2+1e-10).all())
+        ring=icon_fit.Boundary(icon_fit.visible_loops(svg.read_svg(RING)[0]))
+        self.assertIsNone(icon_fit.expand_face_to_point(ring,(.35,.15,.07,0),np.array([.5,.5])))
     def test_bad_path(self):
         for p in ['M0','M0 0X10 10','M0 0C1 1','M0 0L1e999 2Z']:
             with self.assertRaises(ValueError):svg.paths(p)

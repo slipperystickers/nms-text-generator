@@ -13,6 +13,7 @@ class BackendTests(unittest.TestCase):
     def setUp(self):
         b._split_cache.clear()
         b._standard_cache.clear()
+        b._direct_cache.clear()
         self.host = 'bl_ext.custom.no_mans_sky_base_builder'
         self.forge = 'bl_ext.custom.charon_forge'
         self.part = NS(create_matrix_from_vectors=Mock(), deserialise_from_object=Mock())
@@ -47,6 +48,34 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(set(api.get_asset_index()), {'BUILDFLATPANEL','STORAGEPANEL'})
         self.assertIs(api.Part, self.part)
         self.assertIs(api.BUILDER, self.builder)
+
+    def test_official_6x_package_builder_without_forge(self):
+        self.modules[self.host + '.builder'] = NS(Builder=object)
+        package = self.modules[self.host] = NS(BUILDER=self.builder)
+        api = b.resolve([self.host])
+        self.assertIsInstance(api, b.DirectBackend)
+        self.assertIs(api.BUILDER, self.builder)
+        api.add_part('BUILDFLATPANEL', high_res=True, build_rigs=False)
+        self.builder.add_part.assert_called_once_with('BUILDFLATPANEL', build_rigs=False)
+        self.assertEqual(set(api.get_asset_index()), {'BUILDFLATPANEL', 'STORAGEPANEL'})
+        self.assertIs(b.resolve([self.host]), api)
+
+    def test_official_6x_package_without_builder_is_rejected(self):
+        self.modules[self.host + '.builder'] = NS(Builder=object)
+        self.modules[self.host] = NS()
+        with self.assertRaisesRegex(ValueError, 'package builder API'):
+            b.resolve([self.host])
+
+    def test_stock_6x_with_idle_forge_retains_native_builder(self):
+        self.modules[self.host+'.builder']=NS(Builder=object)
+        self.modules[self.host]=NS(BUILDER=self.builder)
+        self.bridge.get_addon_module_name.return_value=None
+        api=b.resolve([self.host,self.forge])
+        self.assertIsInstance(api,b.DirectBackend)
+        self.assertIs(api.BUILDER,self.builder)
+        api.add_part('STORAGEPANEL',high_res=True)
+        self.builder.add_part.assert_called_once_with('STORAGEPANEL')
+        self.placement.add_part.assert_not_called()
 
     def test_legacy_does_not_require_forge(self):
         legacy = NS(add_part=Mock(), Part=self.part, BUILDER=self.builder, get_asset_index=Mock())

@@ -25,6 +25,12 @@ rightsholders. This repository contains part IDs and placement data, not game
 meshes or textures. Preview PNGs depict the resulting in-game parts as rendered
 in Blender; this project's code license does not grant rights to underlying game art.
 
+`color_catalog.json` contains factual palette IDs and RGB triples extracted from
+Hello Games' base-building table, plus standard CSS named-colour values. The
+snapshot identifies its source build and SHA-256. It contains no game textures
+or meshes. Its values estimate palette colours; they are not a measurement of
+rendered panel faces under game lighting.
+
 ## Lettering styles
 
 The layouts are NMS panel-placement recipes rather than installable font software.

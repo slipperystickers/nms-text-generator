@@ -4,18 +4,21 @@
        height="50">
 </a>
 
-# NMScribe — No Man's Scribe for Blender Base Builder
+# NMScribe â€” No Man's Scribe for Blender Base Builder
 
 Build editable No Man's Sky lettering from native Flat Panels or Storage Panel backs, with five
 panel-lettering styles, visual previews, automatic style switching and right-click editing.
 
-**NMScribe v2.0 is the first official launch.** It includes contour-first SVG
+**NMScribe v2.2.8 highlights Generate and fixes Follow Curve on Bezier circles; Match colours is off by default.** Straight edges stay aligned; curves retain consistent facets. Solid backing, raised colour inlays, Blender curve placement and the compact SVG colour selector remain supported. It includes SVG
 **Icon / Sticker mode (experimental)** alongside the five lettering styles. Switch modes
 under the branding header, import a local SVG, and adjust accuracy and a hard
 panel limit. The fitted silhouette preview and part count update before you
 generate anything. Icons use native panels, stay editable in separate collections,
-and export as native JSON. This is an approximate **single-colour** geometry fitter,
-not a multicolour decal or exact curve trace. [SVG instructions and limitations](USER_GUIDE.md#svg-icons-and-stickers).
+and export as native JSON. Solid SVG fills and strokes can retain their visible
+colour regions, matched to the nearest native NMS primary palette colour.
+Single-colour silhouette mode remains available. Textures, finishes and lighting
+affect the appearance; this is approximate panel geometry.
+[SVG instructions and limitations](USER_GUIDE.md#svg-icons-and-stickers).
 
 Created by **FuriousFurby**, shared with the community through **Corvette Class
 Builders (CCB)**. [Join CCB](https://discord.gg/arbW3DvM5y) and visit
@@ -25,6 +28,18 @@ An independent Blender add-on with its own **NMS Text** sidebar. It calls
 No Man's Sky Base Builder's native-part functions; it does not modify that add-on.
 **Charon Forge is optional:** use it for HD models/textures, or use Base Builder's
 standard native models/materials without it. The previous combined add-on remains supported.
+
+## New in 2.2.8
+
+- **SVG colour matching:** opt in with Match colours, then customize each match in the Colours popout. Station palettes are optional.
+- **Follow Curve:** select existing generated text/icon panels or their control together with one Blender curve, then click Follow Curve. Expand Curve Options for fit, reverse, facing, restore-flat, and Around curve angle.
+- **Responsive previews:** animated progress, stage and elapsed time while previews generate.
+- **Cleaner icon fitting:** aligned straight edges, more consistent curved outlines, seam repair, and overlapping backing/inlays where useful. Complex SVGs still need a realistic part budget.
+- **Clearer controls:** large highlighted Generate buttons, compact options, and colour matching off by default.
+
+![Straight and circular text created with Follow Curve](https://raw.githubusercontent.com/slipperystickers/nms-text-generator/v2.2.8/docs/screenshots/follow-curve-2.2.8.png)
+
+![Two-colour SVG recreated with 296 native panels](https://raw.githubusercontent.com/slipperystickers/nms-text-generator/v2.2.8/docs/screenshots/colour-match-2.2.8.png)
 
 ## Download and install
 
@@ -38,13 +53,13 @@ Do **not** install GitHub's automatically generated Source code ZIP.
 4. After an update, save your work and restart Blender.
 5. Hover over the 3D Viewport, press **N**, and open the **NMS Text** tab.
 
-Tested on **Blender 5.1.2 / Windows** with these three configurations:
+Tested on **Blender 5.1.2 and 5.2.2 LTS / Windows**:
 
-| Base Builder | Charon Forge | Blender display |
+| Base Builder | Charon Forge | Validation |
 | --- | --- | --- |
-| Previous combined 18.0.8 development build | Not required | Combined add-on's HD assets |
-| New official 7.0.0 | Not installed/enabled | Standard native models/materials |
-| New official 7.0.0 | 0.1.0 enabled | Charon Forge HD assets/textures |
+| Combined 18.0.9 | Not required | Native text/icons and curve placement on Blender 5.1.2 |
+| Stock 6.5.2 | Disabled | Native text/icons and curve placement on Blender 5.2.2 |
+| Stock 6.5.2 | Enabled | Native text/icons and curve placement on Blender 5.2.2 |
 
 These version numbers belong to different release lines. The same sign settings,
 native item IDs, placements and part counts work in all three; switching providers
@@ -56,13 +71,13 @@ are bundled in this text add-on, and it never substitutes invented geometry.
 ## Quick start
 
 1. Use **Object Mode** and place the **3D Cursor** at the sign's baseline anchor.
-2. Enter text, choose a style, set size/spacing and orientation, then click **Generate New Text**. **Storage Panels (back)** is the default in both Text and Icon / Sticker modes; Flat Panels remains available.
+2. Enter text, choose a style, set size/spacing and orientation, then click **GENERATE TEXT**. **Storage Panels (back)** is the default in both Text and Icon / Sticker modes; Flat Panels remains available.
 3. Leave all panels of that sign selected and choose another style or panel type to regenerate automatically.
 4. Later, select any one panel and right-click **Edit NMS Text**. Confirm with **OK**; Cancel changes nothing.
 5. Use **Select Control** to move, rotate or uniformly scale the whole sign.
 6. Save your `.blend` to keep the text editable. Use **Export Selected Text JSON** for native-part export.
 
-**[Read the complete User Guide](USER_GUIDE.md)** — installation, every setting,
+**[Read the complete User Guide](USER_GUIDE.md)** â€” installation, every setting,
 multiline text, mounting, colours, re-editing, examples, export and troubleshooting.
 The launch package also includes **NMScribe_Instructions.html**: a complete,
 searchable, printable offline instruction page with no login or internet required.
@@ -84,7 +99,7 @@ Orbitron-inspired ship lettering with custom flat-capped diagonals, a softer D,
 triangular A, corrected 4 and upright 7. Standard 4.9-unit character cells and
 0.64-unit strokes at the native five-unit height; I uses a compact 0.64-unit
 advance with the normal letter gap, 1 is centered, and Q's tail
-extends beyond its body. Uses 4–32 panels per character (626 for A-Z plus 0-9).
+extends beyond its body. Uses 4â€“32 panels per character (626 for A-Z plus 0-9).
 The optimized title `TYNDUSTRIAL ASTRONAUTICS` uses 367 panels, including the
 corrected C with inward-facing terminals. All exposed faces remain parallel.
 Small panels approximate pointed ends; this is not an exact outline trace.

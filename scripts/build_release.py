@@ -22,7 +22,7 @@ for name in ('README.md','USER_GUIDE.md','NOTICE.md','LICENSE','CHANGELOG.md'):
 files['nms_text_generator/NMScribe_Instructions.html']=instructions
 files['nms_text_generator/RELEASE_NOTES.md']=launch_notes
 assert all(p.exists() for p in files.values())
-assert len(files)==29,len(files)
+assert len(files)==33,len(files)
 archive=out/f'NMS_Text_Generator_{version}.zip'
 with ZipFile(archive,'w',ZIP_DEFLATED,compresslevel=9) as z:
     for name,path in sorted(files.items()):

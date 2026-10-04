@@ -1,6 +1,6 @@
-# NMScribe — complete user guide
+# NMScribe â€” complete user guide
 
-NMScribe (No Man's Scribe), by FuriousFurby(FF) — 2026. Official launch v2.0; SVG import hotfix 2.0.1.
+NMScribe (No Man's Scribe), by FuriousFurby(FF) â€” 2026. Version 2.2.8 audits native seams and repairs gaps after final fitting while retaining aligned outlines and solid backing/inlays, alongside curve placement and the compact colour-selection popout.
 Donated to the Community by Corvette Class Builders (CCB).
 
 Create editable panel lettering and SVG silhouettes from real No Man's Sky parts,
@@ -34,26 +34,55 @@ browser to read offline, use Ctrl-F to search, or Ctrl-P to print/save as PDF.
 The **Text / Icon / Sticker** switch sits immediately beneath the logo/community header. Text mode and all approved fonts are unchanged. Icon mode is an experimental geometry fitter, not a texture/decal importer.
 
 1. Choose **Icon / Sticker**, then **Import SVG**. Select a local `.svg` file (maximum 1 MB).
-2. Adjust **Accuracy** and **Part limit**. After a short pause, the preview updates without changing any objects in your scene. Amber shows the fitted panel area; red shows target detail not covered at the sampling resolution.
-3. Read the actual planned panel count before generating. The hard part limit is never exceeded. If the limit is reached, some detail remains omitted; either raise the limit or accept a simpler result. Tiny features and small islands can disappear at lower accuracy or tight budgets.
-4. Keep the default **Storage Panels (back)** or choose Flat Panels, then set icon height, orientation, face offset, and palette. Height scales the whole design uniformly and does not itself change part count. The preview is based on the Flat Panel footprint; Storage Panel faces have a very slightly different aspect ratio.
-5. Position the 3D Cursor at the desired **centre** of the icon and choose **Generate New Icon**. This creates a separate collection with a parent control and native NMS parts. Bury rear geometry in a mounting surface, as with text.
-6. To revise it later, select any generated panel and right-click **Edit NMS Icon / Sticker**, or use **Load Selected Icon Settings** in the sidebar. Adjust the preview, then click **Update Selected Icon**. The original control's position, rotation, uniform scale and untagged attachments remain. Generated panels and their manual edits are replaced; Ctrl-Z undoes the update. Default palette keeps the original group's colour/material, not individual panel recolouring.
-7. Save your `.blend`. The SVG source is stored with the icon, so re-editing does not depend on the original file remaining on disk. **Export Icon JSON** exports native game parts only, not the SVG, preview or parent control.
+2. Use **Colours** to open source swatches and NMS palette/colour dropdowns. Choose a palette family and colour, or **Automatic** for the closest match. **Apply Colours** refreshes the preview; Cancel preserves the previous choices. The information button beside the part count opens **Fit Details**; **Icon Options** holds panel type, orientation and face offset.
+3. **Match colours** is off by default. Enable it when you want a coloured SVG matched to the NMS palette. Solid fills and strokes keep their visible regions, with the nearest NMS palette applied per panel. The preview shows estimated matched colours; red shows omitted detail. Turn matching off for the original amber silhouette preview. Adjust **Accuracy** and **Part limit**; preview changes do not alter scene objects.
+4. Read the actual planned panel count and filled coverage before generating. Accuracy is a detail control, not a coverage percentage. Complex coloured artwork is fitted as overlapping paint layers; its coverage also checks that the final visible palette is correct. The hard part limit is never exceeded. If the limit is reached, some detail remains omitted; either raise the limit or accept a simpler result. Tiny features and small islands can disappear at lower accuracy or tight budgets.
+5. Keep the default **Storage Panels (back)** or choose Flat Panels, then set icon height, orientation, face offset, and palette. Height scales the whole design uniformly and does not itself change part count. The preview is based on the Flat Panel footprint; Storage Panel faces have a very slightly different aspect ratio.
+6. Position the 3D Cursor at the desired **centre** of the icon and choose **Generate New Icon**. This creates a separate collection with a parent control and native NMS parts. Bury rear geometry in a mounting surface, as with text.
+7. To revise it later, select any generated panel and right-click **Edit NMS Icon / Sticker**, or use **Load Selected Icon Settings** in the sidebar. Adjust the preview, then click **Update Selected Icon**. The original control's position, rotation, uniform scale and untagged attachments remain. Generated panels and their manual edits are replaced; Ctrl-Z undoes the update. Default palette keeps the original group's colour/material, not individual panel recolouring.
+8. Save your `.blend`. The SVG source is stored with the icon, so re-editing does not depend on the original file remaining on disk. **Export Icon JSON** exports native game parts only, not the SVG, preview or parent control.
+
+### Follow a curve
+
+1. Generate the text or icon normally.
+2. Select its panels (or its control), then Shift-select one Blender curve. Either the curve or the artwork may be active.
+3. Click **Follow Curve** near the top of the NMScribe panel.
+
+The button moves the existing panels. It preserves colours, materials, meshes,
+part count and local manual edits. Selecting one panel applies to its whole
+NMScribe group. Use one Bezier, Poly or NURBS spline; closed loops are supported.
+The curve's geometry, bevel and transforms are left intact.
+
+**Curve Options** is collapsed by default. **Fit to curve length** uniformly
+scales the artwork to fit; disable it to keep its size on a sufficiently long
+curve. **Reverse direction** starts from the other end. **Facing** can use the
+artwork's original orientation, Flat or Upright. **Restore Flat Layout** returns
+the artwork to its original placement while retaining local panel edits.
+
+Text keeps each letter rigid; icons follow panel by panel. Tight bends can
+cause overlaps. After editing the curve, select it with the artwork and press
+**Follow Curve** again. Repeated clicks do not compound the bend. Ctrl-Z undoes
+the action. The curve reference survives renaming and saving. Updating the text
+or icon also reapplies its saved curve settings; restore the flat layout first
+if you no longer want it to follow the path.
 
 ### SVG support and limitations
 
-- **One-click simplification:** simple SVGs load normally. For a complex outline, NMScribe asks **Simplify SVG?** Choose **Simplify & Import** to retrace the outline with fewer line segments, or **Cancel** to keep the current icon/settings. No separate editor, external converter or upload is needed. The original SVG file is never changed. Internally, difficult stroke/outline unions use a 2048-pixel silhouette trace before contour simplification and native panel fitting; the sidebar reports when this is used.
+- **One-click simplification:** simple SVGs load normally. For a complex outline, NMScribe asks **Simplify SVG?** Choose **Simplify & Import** to retrace the outline with fewer line segments, or **Cancel** to keep the current icon/settings. No separate editor, external converter or upload is needed. The original SVG file is never changed. Internally, difficult stroke/outline unions use a 2048-pixel silhouette trace before contour simplification and native panel fitting; **Fit Details** reports when this is used.
 - Cleanup and the panel budget are separate. Recovery may reduce sub-pixel details; the Accuracy slider and part cap can cause additional approximation afterward. Raise the part limit when the preview reports omitted detail. Neither 100% Accuracy nor successful import guarantees an exact reproduction.
 
 - Paths with lines, cubic/quadratic curves and elliptical arcs; rectangles (including rounded rectangles), circles, ellipses, polygons, polylines and lines.
 - Group transforms, internal `use` references, inline styles/presentation attributes, even-odd/nonzero holes, and simple solid strokes with common caps/joins.
-- All visible colours merge into **one silhouette**. White-filled shapes are solid, not erasers: use real holes/compound paths for cutouts. Opacity is treated as visible/not-visible, not translucent panel geometry. Gradients are treated as solid fills.
+- With **Match SVG colours**, opaque solid hex, `rgb()`/`rgba()` and SVG/CSS named colours are supported, including inherited `currentColor`. Painter order is preserved: a foreground shape hides the colours beneath it, and real holes expose the lower shapes. White is a painted region, not an eraser. Up to 32 visible matched colours share one hard part cap. Unused part allocations are redistributed to incomplete regions.
+- Matching compares perceptual colour distance against the game's primary palette RGB values, interpreted as linear RGB like Base Builder's materials. Clearly coloured paint first retains a similar hue when one is available, avoiding a brightness advantage that would turn dark blue into grey. It searches indices 0â€“114 by default, including legacy, timber, stone, alloy, salvage, freighter and Corvette colours. It uses the default finish; rust, weathering, metallic and secondary/tertiary texture masks are not independently matched. Different panel faces and game lighting can change the appearance. The colour map is stored on the icon control as `nms_icon_color_matches`.
+- Colour panels have a small deterministic depth order (at most 0.2% of icon height) to prevent coincident overlapping faces from flickering. Mounting must still conceal the rear geometry. Silhouette mode retains its previous placement.
+- **Include station colours** adds the 36 `STATION0`â€“`STATION35` entries at indices 115â€“150, extracted from the local Cosmos 7.05 game table (build 25624745). Their codes are known; their appearance on Flat/Storage panel faces is not yet verified in game. This option is off by default. The supplied container reference sheet is a visual reference, not a calibrated measurement of these panel faces.
+- Gradients, partial transparency and unsupported colour syntax produce a clear import error in colour mode. Flatten those paints to opaque solid paths, or turn off matching. In silhouette mode, all visible colours merge; opacity is visible/not-visible and gradients become solid shapes, as before. Existing saved icons load in silhouette mode unless matching was explicitly saved with them.
 - The imported artwork is tightly fitted to its geometry bounds, not the SVG page's whitespace. Root page dimensions/viewBox are not used as a clipping mask; keep geometry within the intended artwork area before export.
 - Convert text to outlines. Expand clipping paths, masks, filters, dashed strokes and non-scaling strokes before importing. Export styles inline, not as a stylesheet. Embedded/raster images, scripts, external resources, nested SVG viewports and viewBox-based symbol instances are unsupported. No external content is fetched or executed.
 - The fitter now traces the visible vector outline first, rotating native panels to follow each contour edge, then overlaps panels to fill the interior. Hidden edges inside overlapping SVG shapes are removed. Both outline and fill rectangles are checked against the vector boundary, including holes; the meshes themselves are never clipped, stretched or tilted.
 - Accuracy controls contour simplification and cleanup sampling. It is **not** a guarantee of perfectly smooth curves or a strictly increasing part count at each slider step. Curves are approximated with straight segments; very sharp tips and native beveled rims can retain tiny differences. Interior cleanup allows extra overlap for the Flat Panel's inset face.
-- **Part limit takes precedence over Accuracy.** If the outline would consume most of the budget, it is simplified to leave room for interior panels. The sidebar reports this and separates outline/fill counts. If small gaps remain at the cap, increase the limit or reduce accuracy. A setting of 100% does not override the limit or mean an exact SVG reproduction.
+- **Part limit takes precedence over Accuracy.** If the outline would consume most of the budget, it is simplified to leave room for interior panels. **Fit Details** reports this and separates outline/fill counts. If small gaps remain at the cap, increase the limit or reduce accuracy. A setting of 100% does not override the limit or mean an exact SVG reproduction.
 - Standard external SVG DOCTYPE declarations (including Illustrator's SVG 1.1 declaration) are accepted and ignored locally. No DTD URL is fetched. Custom entities and internal DTD subsets remain blocked.
 - **Sampled coverage** measures raster samples, not an exact area proof for the native meshes. Even 100% at that resolution can retain subpixel gaps or contour differences. Inspect the actual panel build and verify it in game before relying on it for final artwork.
 - This version is tested offline in Blender, not certified in-game or in multiplayer. It supports one icon per update; it never updates all selected signs or icons automatically.
@@ -62,11 +91,11 @@ The **Text / Icon / Sticker** switch sits immediately beneath the logo/community
 
 ### Requirements
 
-Tested with **Blender 5.1.2 for Windows** using either:
+Tested with **Blender 5.1.2 and Blender 5.2.2 LTS for Windows** using:
 
-- The previous combined **18.0.8 Base Builder development build**. No Charon Forge needed.
-- The new official **Base Builder 7.0.0 alone**, using its standard native models/materials.
-- **Base Builder 7.0.0 + Charon Forge 0.1.0**, using Charon Forge's HD models/textures.
+- The combined **18.0.8 Base Builder** line on both Blender versions, and **18.0.9** on Blender 5.2.2. Its native HD factory remains supported.
+- Current stock **Base Builder 6.5.2**, both with Charon Forge disabled and enabled. Stock 6.5.2 does not expose the newer Forge hooks, so NMScribe uses its native standard factory even when Forge is enabled.
+- The newer standard-hook/Forge adapter remains supported, with active-builder resolution and lifecycle regressions. HD appearance requires a host that implements Forge's hooks; simply enabling Forge cannot add those hooks to stock 6.5.2.
 
 **Charon Forge is optional, not a requirement to generate or export text.** The
 version numbers above belong to different release lines. Native IDs, transforms,
@@ -135,7 +164,7 @@ The letter bodies use a common width and stroke thickness; I uses its actual nar
 width plus the normal letter gap (no extra side padding). The 1 remains centered
 in its wider cell, while Q has an external tail. Its zero is slashed and
 its 7 has an upright right stem. C has paired inward-facing return terminals.
-The coplanar overlap optimization uses 4–32 panels per character, 626 for one
+The coplanar overlap optimization uses 4â€“32 panels per character, 626 for one
 A-Z/0-9 set. `TYNDUSTRIAL ASTRONAUTICS` uses 367 panels. Watch the displayed
 part count; the 3,000-part guard still applies (93 X characters use 2,976 panels;
 94 exceed the guard).
@@ -241,7 +270,7 @@ offsets, so this field is an adjustment rather than an exact burial-depth value.
 5. Inspect from the front and adjust depth as needed.
 
 The generator does not create a backing, snap to walls, conform to curved
-surfaces, remove native texture seams, or bend text around a curved baseline.
+surfaces, remove native texture seams, or automatically conform text to an arbitrary surface. Use Follow Curve for a curved baseline.
 
 Moving the cursor later does not move existing signs. Re-editing preserves the
 existing control transform. Use the control to rotate existing text; Orientation
@@ -256,7 +285,7 @@ once when the migration first runs; your later ON/OFF choice is saved with the f
    after generation. To select them again, click one panel, then **Select Parts**.
 2. Keep unrelated objects unselected.
 3. Change Font in the dropdown or thumbnail picker, or change Panel type.
-4. The sign rebuilds automatically—no Replace button or confirmation required.
+4. The sign rebuilds automaticallyâ€”no Replace button or confirmation required.
 
 This operation changes only the chosen font or panel type, using that sign's
 **saved text, size and spacing**. It does not apply unrelated draft values typed
@@ -477,3 +506,11 @@ standard-only appearance after disabling Forge, restart Blender with a fresh sce
 Disable/remove the generator through Preferences to uninstall. Native panels
 remain usable with Base Builder; generator-specific editing requires the generator
 again. Uninstalling this add-on does not remove or modify Base Builder.
+
+### Preview activity
+
+Icon and text previews calculate in a separate local process. The pulsing bar is an activity indicator, not a percentage estimate. It shows the stage and elapsed time; Blender remains available. Changing settings cancels obsolete calculations. Imports are committed after successful validation, and detailed SVGs still ask before simplification.
+
+### Rotate artwork around a circle
+
+Select the generated artwork and its closed curve. Expand **Curve Options**, set **Around curve** in degrees, and click **Follow Curve**. A 90 degree angle moves it one quarter of the way around; negative angles move the other way. Set 0 degrees to return to its original starting position. The letters stay aligned to the path. The angle is retained when you update or reopen the artwork. Open curves require an angle of 0.

@@ -11,6 +11,7 @@ from pathlib import Path
 HOST_NAMES = ('no_mans_sky_base_builder', 'official_nms_builder')
 _split_cache = {}
 _standard_cache = {}
+_direct_cache = {}
 
 
 def dependency_name(enabled):
@@ -79,6 +80,17 @@ class StandardBackend:
         return index
 
 
+class DirectBackend(StandardBackend):
+    """Official 6.x releases expose the active builder on the package root."""
+
+    def __init__(self, package):
+        self.package = package
+
+    @property
+    def BUILDER(self):
+        return self.package.BUILDER
+
+
 def resolve(enabled):
     enabled = tuple(enabled)
     host = dependency_name(enabled)
@@ -99,16 +111,27 @@ def resolve(enabled):
         return legacy
 
     forge_name = next((n for n in enabled if n.rsplit('.', 1)[-1] == 'charon_forge'), None)
-    if not forge_name:
-        try:
-            hooks = importlib.import_module(host + '.builder')
-        except ImportError as exc:
-            raise ValueError('Base Builder could not load its native-part API: ' + str(exc)) from exc
-        if not callable(getattr(hooks, 'get_builder', None)):
-            raise ValueError('This Base Builder lacks both the legacy HD API and the standard builder hooks. Use a supported Base Builder version.')
-        backend = _standard_cache.get(host)
-        if backend is None or backend.hooks is not hooks:
-            backend = _standard_cache[host] = StandardBackend(hooks)
+    try:
+        hooks = importlib.import_module(host + '.builder')
+    except ImportError as exc:
+        raise ValueError('Base Builder could not load its native-part API: ' + str(exc)) from exc
+    # Stock 6.x has no Forge hook API. Merely enabling an idle Forge add-on
+    # must not remove its working native generation/export path.
+    if not forge_name or not callable(getattr(hooks, 'get_builder', None)):
+        if callable(getattr(hooks, 'get_builder', None)):
+            backend = _standard_cache.get(host)
+            if backend is None or backend.hooks is not hooks:
+                backend = _standard_cache[host] = StandardBackend(hooks)
+        else:
+            try:
+                package = importlib.import_module(host)
+            except ImportError as exc:
+                raise ValueError('Base Builder could not load its package API: ' + str(exc)) from exc
+            if getattr(package, 'BUILDER', None) is None:
+                raise ValueError('This Base Builder lacks the legacy HD API, standard builder hooks, and package builder API. Use a supported Base Builder version.')
+            backend = _direct_cache.get(host)
+            if backend is None or backend.package is not package:
+                backend = _direct_cache[host] = DirectBackend(package)
         instance = backend.BUILDER
         if not all(callable(getattr(instance, key, None)) for key in ('get_part_class', 'get_obj_path', 'add_part')):
             raise ValueError('Base Builder lacks the required standard-part API.')

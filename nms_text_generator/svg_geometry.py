@@ -143,7 +143,7 @@ def geometry(e):
         return [(line,True)]
     raise ValueError('Unsupported SVG element: '+kind+'. Convert it to plain paths first.')
 
-def read_svg(source, *, cleanup=True):
+def read_svg(source, *, cleanup=True, with_colors=False):
     if len(source.encode('utf-8'))>MAX_BYTES:raise ValueError('SVG is larger than 1 MB. Simplify it before import.')
     # Illustrator's external SVG 1.1 DTD is only a format declaration. Discard
     # it locally; never resolve its URL. Custom/internal entities stay forbidden.
@@ -157,8 +157,8 @@ def read_svg(source, *, cleanup=True):
     elements=list(root.iter())
     if len(elements)>4096:raise ValueError('SVG has more than 4096 elements. Simplify it first.')
     if any(tag(e)=='style' and (e.text or '').strip() for e in elements):raise ValueError('SVG stylesheets are not supported. Export with inline styles or presentation attributes.')
-    ids={e.get('id'):e for e in elements if e.get('id')};shapes=[];visits=0;points_used=0
-    def add(contours,rule,matrix):
+    ids={e.get('id'):e for e in elements if e.get('id')};shapes=[];paints=[];visits=0;points_used=0
+    def add(contours,rule,matrix,paint,opacity):
         nonlocal points_used
         cs=[]
         for contour in contours:
@@ -167,7 +167,14 @@ def read_svg(source, *, cleanup=True):
             if not np.isfinite(arr).all() or abs(arr).max()>1e9:raise ValueError('SVG coordinates are invalid or too large.')
             cs.append(arr);points_used+=len(arr)
         if points_used>100000:raise ValueError('SVG is too complex; simplify paths first.')
-        if cs:shapes.append((cs,rule))
+        if cs:
+            if with_colors:
+                from .color_match import parse_color
+                rgb,alpha=parse_color(paint)
+                if abs(alpha*opacity-1)>1e-6:
+                    raise ValueError('Colour matching needs opaque solid fills/strokes. Flatten transparency or turn off Match SVG colours.')
+                paints.append(rgb)
+            shapes.append((cs,rule))
     def visit(e,matrix,style,depth=0):
         nonlocal visits
         visits+=1
@@ -175,7 +182,7 @@ def read_svg(source, *, cleanup=True):
         kind=tag(e);style=dict(style)
         # Opacity multiplies through groups. Fill/stroke opacity are inherited.
         inherited_opacity=float(style.pop('_opacity',1))
-        for k in ('fill','fill-rule','fill-opacity','stroke','stroke-width','stroke-opacity','stroke-linecap','stroke-linejoin','stroke-miterlimit','display','visibility','opacity','clip-path','mask','filter','stroke-dasharray','vector-effect'):
+        for k in ('color','fill','fill-rule','fill-opacity','stroke','stroke-width','stroke-opacity','stroke-linecap','stroke-linejoin','stroke-miterlimit','display','visibility','opacity','clip-path','mask','filter','stroke-dasharray','vector-effect'):
             if k in e.attrib:style[k]=e.get(k)
         style.update(dict((a.strip(),b.strip()) for a,b in (part.split(':',1) for part in e.get('style','').split(';') if ':' in part)))
         opacity=inherited_opacity*float(style.pop('opacity',1));style['_opacity']=opacity
@@ -220,7 +227,9 @@ def read_svg(source, *, cleanup=True):
         if painted(style.get('fill','black')) and float(style.get('fill-opacity',1))>0 and kind!='line':
             rule=style.get('fill-rule','nonzero')
             if rule not in ('nonzero','evenodd'):raise ValueError('Unsupported SVG fill rule.')
-            add([line for line,_ in lines],rule,matrix)
+            paint=style.get('fill','black')
+            if paint.lower()=='currentcolor':paint=style.get('color','black')
+            add([line for line,_ in lines],rule,matrix,paint,opacity*float(style.get('fill-opacity',1)))
         if painted(style.get('stroke','none')) and float(style.get('stroke-opacity',1))>0:
             sw=style.get('stroke-width','1')
             if not re.fullmatch(NUMBER+r'(?:px)?',sw):raise ValueError('Stroke widths must use SVG user units or px.')
@@ -266,7 +275,9 @@ def read_svg(source, *, cleanup=True):
                         elif cap=='square':stroke_add([a+n,a-n,a-u*half-n,a-u*half+n])
             # Consistent winding combines all stroke patches as one union;
             # overlapping patches cannot cancel each other or punch out holes.
-            add(stroke_contours,'nonzero',matrix)
+            paint=style.get('stroke','none')
+            if paint.lower()=='currentcolor':paint=style.get('color','black')
+            add(stroke_contours,'nonzero',matrix,paint,opacity*float(style.get('stroke-opacity',1)))
     visit(root,np.eye(3),{})
     if not shapes:raise ValueError('SVG has no visible filled shapes or strokes.')
     allp=np.concatenate([c for contours,_ in shapes for c in contours]);low=allp.min(0);high=allp.max(0)
@@ -274,7 +285,8 @@ def read_svg(source, *, cleanup=True):
     if min(span)<=1e-9:raise ValueError('SVG silhouette has no area.')
     # Normalized geometry, tightly cropped to artwork, independent of page units.
     shapes=[([(c-low)/max(span) for c in cs],rule) for cs,rule in shapes]
-    return shapes,(span/max(span)).tolist()
+    result=shapes,(span/max(span)).tolist()
+    return (*result,paints) if with_colors else result
 
 def rasterize(shapes,size):
     """Pixel-centre scan conversion, holes obey each element's fill rule."""

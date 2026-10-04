@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'NMScribe for Blender Base Builder',
     'author': 'FuriousFurby',
-    'version': (2, 0, 1),
+    'version': (2, 2, 8),
     'blender': (5, 1, 0),
     'location': '3D View > Sidebar > NMS Text',
     'description': 'Native-panel text and SVG icons through NMS Base Builder; separate NMS Text tab',
@@ -21,13 +21,13 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, Po
 from bpy_extras.io_utils import ExportHelper
 from mathutils import Matrix, Vector
 
-from . import backend, layout, panels, text_input, icon_ui
+from . import backend, layout, panels, text_input, icon_ui,curve_layout,preview_jobs
 
 OWNER = 'nms_text_owner'
 ROOT = 'nms_text_root'
 CONFIG = 'nms_text_config'
 SEQUENCE = 'nms_text_sequence'
-FIELDS = ('font', 'panel_type', 'text', 'text_version', 'height', 'letter_gap', 'word_gap', 'line_gap', 'alignment', 'orientation', 'face_offset', 'palette')
+FIELDS = ('font', 'panel_type', 'text', 'text_version', 'height', 'letter_gap', 'word_gap', 'line_gap', 'alignment', 'orientation', 'face_offset', 'palette','use_curve','curve_name','curve_fit')
 LEGACY_DEFAULTS = {'font': 'FUTURE_Z', 'panel_type': panels.DEFAULT}
 _previews = None
 _font_items = []
@@ -59,6 +59,7 @@ def upgrade_config(config):
     if config.get('text_version',1)<2:
         config['text']=layout.decode_legacy(config['text'])
     config['text_version']=2
+    for key,value in curve_layout.DEFAULTS.items():config.setdefault(key,value)
     return config
 
 
@@ -260,8 +261,10 @@ def create_text(context, config, matrix=None, user_data=None):
     part_id = panels.validate(config['panel_type'])
     b = get_builder(part_id)
     plan = make_plan(config)
+    path=curve_layout.Path(context,config) if config['use_curve'] else None
+    factor=path.fit(max(plan['line_widths']),config['curve_fit']) if path else 1.
     user_data = active_palette(context,config) if user_data is None else user_data
-    matrix = placement_matrix(context,config['orientation']) if matrix is None else matrix.copy()
+    matrix = (path.matrix if path else placement_matrix(context,config['orientation'])) if matrix is None else matrix.copy()
     check_matrix(matrix)
     old_selection = list(context.selected_objects)
     old_active = context.view_layer.objects.active
@@ -289,6 +292,11 @@ def create_text(context, config, matrix=None, user_data=None):
         sequence = 0
         for glyph_index, placement in enumerate(plan['placements']):
             offset = Matrix.Translation((placement['x'],placement['y'],config['face_offset']))
+            if path:
+                width=font_data['widths'][placement['char']]*plan['scale']
+                anchor={'LEFT':0,'CENTER':max(plan['line_widths'])/2,'RIGHT':max(plan['line_widths'])}[config['alignment']]
+                distance=(placement['x']+width/2+anchor)*factor
+                offset=path.frame(distance)@Matrix.Scale(factor,4)@Matrix.Translation((-width/2,placement['y'],config['face_offset']))
             for record in font_data['glyphs'][placement['char']]:
                 # add_part is the same API used by Base Builder's asset browser.
                 part = b.add_part(part_id,user_data=user_data,build_rigs=False,high_res=True)
@@ -340,10 +348,12 @@ def replace_text(context, root, config):
     # Placement/orientation stays where the existing control is. Other fields
     # come from the panel. Original palette is retained unless copying active.
     config = dict(config)
+    if curve_layout.STATE in root:config.update(curve_layout.DEFAULTS)
     previous = json.loads(root[CONFIG])
     config['orientation'] = previous['orientation']
     palette = active_palette(context,config) if config['palette']=='ACTIVE' else int(root['nms_text_userdata'])
-    staged = create_text(context,config,matrix=root.matrix_world,user_data=palette)
+    staged = create_text(context,config,matrix=curve_layout.rebuild_matrix(root),user_data=palette)
+    curve_layout.reapply(context,root,staged)
     new_parts = managed_parts(staged)
     staging_collection = list(staged.users_collection)[0]
     # Only after successful generation replace the old owned parts. Keep the
@@ -360,6 +370,7 @@ def replace_text(context, root, config):
         bpy.data.objects.remove(obj,do_unlink=True)
     for key in (CONFIG,'nms_text_userdata','nms_text_part_count','nms_text_library'):
         root[key] = staged[key]
+    curve_layout.copy_state(staged,root)
     destination.name='NMS Text - '+make_plan(config)['text'].replace('\n',' ')[:32]
     root.name=destination.name
     bpy.data.objects.remove(staged,do_unlink=True)
@@ -400,6 +411,9 @@ class NMSTEXT_Settings(bpy.types.PropertyGroup):
     alignment: EnumProperty(name='Alignment',items=[('LEFT','Left','Baseline starts at the cursor'),('CENTER','Center','Each line centered on the cursor'),('RIGHT','Right','Each line ends at the cursor')],default='LEFT')
     orientation: EnumProperty(name='Orientation',items=[('FLAT','Flat (XY)','Front faces +Z'),('UPRIGHT','Upright (XZ)','Front faces -Y'),('CURSOR','3D Cursor rotation','Use the full rotation of the 3D Cursor')],default='FLAT')
     palette: EnumProperty(name='Colour / material',items=[('DEFAULT','Default / keep on replace','Native default for new text; preserve current palette when replacing'),('ACTIVE','Copy active NMS part','Copy the selected part\'s UserData palette and material finish')],default='DEFAULT')
+    use_curve: BoolProperty(name='Follow curve',default=False)
+    curve_name: StringProperty(name='Curve',description='Blender curve used to place this text')
+    curve_fit: BoolProperty(name='Fit to curve length',default=True,description='Uniformly scale the artwork to the curve length')
 
 class NMSTEXT_OT_input(bpy.types.Operator):
     """Focused, cancel-safe text entry; owns no global keyboard shortcuts."""
@@ -556,7 +570,7 @@ class NMSTEXT_OT_generate(bpy.types.Operator):
         return context.mode=='OBJECT'
     def execute(self,context):
         try:
-            root=create_text(context,config_from_settings(context.scene.nms_text_settings))
+            root=create_text(context,dict(config_from_settings(context.scene.nms_text_settings),**curve_layout.DEFAULTS))
             self.report({'INFO'},f"Created {root['nms_text_part_count']} native parts")
             return {'FINISHED'}
         except Exception as exc:
@@ -725,6 +739,58 @@ class NMSTEXT_OT_export(bpy.types.Operator,ExportHelper):
             self.report({'ERROR'},str(exc))
             return {'CANCELLED'}
 
+_text_jobs=preview_jobs.Jobs()
+_text_previews={}
+_text_pending={}
+
+
+def text_preview_key(settings):
+    return tuple(getattr(settings,k) for k in ('text','height','letter_gap','word_gap','line_gap','alignment','font'))
+
+
+def refresh_text_previews():
+    import time
+    for name,job in list(_text_jobs.active.items()):
+        scene=bpy.data.scenes.get(name)
+        if scene is None or text_preview_key(scene.nms_text_settings)!=job.key:
+            _text_jobs.cancel(name);continue
+        if not job.poll():continue
+        try:_text_previews[job.key]=job.result()
+        except Exception as exc:_text_previews[job.key]={'error':str(exc)}
+        finally:_text_jobs.cancel(name)
+        while len(_text_previews)>8:_text_previews.pop(next(iter(_text_previews)))
+    for name,(key,deadline) in list(_text_pending.items()):
+        if time.monotonic()<deadline:continue
+        _text_pending.pop(name,None);scene=bpy.data.scenes.get(name)
+        if scene is None or text_preview_key(scene.nms_text_settings)!=key:continue
+        if key in _text_previews:continue
+        args=dict(zip(('text','height','letter_gap','word_gap','line_gap','alignment','font'),key))
+        try:_text_jobs.start(name,key,{'kind':'text','args':args})
+        except Exception as exc:_text_previews[key]={'error':str(exc)}
+    icon_ui.redraw()
+    return .1 if _text_jobs.active or _text_pending else None
+
+
+def draw_text_preview(ui,scene):
+    import time
+    settings=scene.nms_text_settings;key=text_preview_key(settings)
+    result=_text_previews.get(key)
+    if result is None:
+        pending=_text_pending.get(scene.name)
+        if pending is None or pending[0]!=key:_text_pending[scene.name]=(key,time.monotonic()+.25)
+        if not bpy.app.timers.is_registered(refresh_text_previews):bpy.app.timers.register(refresh_text_previews,first_interval=.1)
+        icon_ui.draw_busy(ui,_text_jobs.active.get(scene.name),text='Preparing text preview')
+        return False
+    if 'error' in result:
+        box=ui.box();box.alert=True
+        for index,line in enumerate(textwrap.wrap(result['error'],width=42)):
+            box.label(text=line,icon='ERROR' if index==0 else 'NONE')
+        return False
+    ui.label(text=f"{result['part_count']:,} parts / {result['character_count']} characters",icon='MESH_CUBE')
+    ui.label(text=f"Library: up to {result['max_parts_per_character']} panels per character")
+    return True
+
+
 class NMSTEXT_PT_panel(bpy.types.Panel):
     bl_label='NMScribe'
     bl_idname='NMSTEXT_PT_panel'
@@ -752,10 +818,13 @@ class NMSTEXT_PT_panel(bpy.types.Panel):
         donation.label(text='Corvette Class Builders (CCB)')
         brand.operator('wm.url_open',text='CCB / Traveller Toolkit',icon='URL').url='https://discord.gg/arbW3DvM5y'
         ui.prop(settings,'mode',expand=True)
-        ui.label(text='Native panel lettering - v2.0.1')
+        ui.label(text='Native panel lettering - v2.2.8')
         if settings.mode=='ICON':
             icon_ui.draw(ui,context)
             return
+        generate=ui.row();generate.scale_y=1.8
+        generate.operator('nms_text.generate',text='GENERATE TEXT',icon='ADD',depress=True)
+        curve_layout.draw(ui,context)
         ui.prop(settings,'auto_font')
         ui.prop(settings,'font')
         ui.prop(settings,'panel_type')
@@ -777,20 +846,7 @@ class NMSTEXT_PT_panel(bpy.types.Panel):
         ui.prop(settings,'orientation')
         ui.prop(settings,'face_offset')
         ui.prop(settings,'palette')
-        valid=True
-        try:
-            preview=make_plan(config_from_settings(settings))
-            ui.label(text=f"{preview['part_count']:,} parts / {preview['character_count']} characters",icon='MESH_CUBE')
-            ui.label(text=f"Library: up to {layout.library(settings.font)['max_parts_per_character']} panels per character")
-        except ValueError as exc:
-            valid=False
-            box=ui.box()
-            box.alert=True
-            for index,line in enumerate(textwrap.wrap(str(exc),width=42)):
-                box.label(text=line,icon='ERROR' if index==0 else 'NONE')
-        row=ui.row()
-        row.enabled=valid and bool(dependency_name()) and context.mode=='OBJECT'
-        row.operator('nms_text.generate',icon='ADD')
+        valid=draw_text_preview(ui,context.scene)
         root=selected_root(context)
         if root:
             box=ui.box()
@@ -809,30 +865,42 @@ class NMSTEXT_PT_panel(bpy.types.Panel):
         ui.label(text='Place the 3D Cursor on the mounting plane.')
         ui.label(text='Uniform scale only; rear geometry is buried.')
 
-CLASSES=(NMSTEXT_Settings,NMSTEXT_OT_generate,NMSTEXT_OT_change_font,NMSTEXT_OT_edit,NMSTEXT_OT_replace,NMSTEXT_OT_load,NMSTEXT_OT_select,NMSTEXT_OT_export,NMSTEXT_PT_panel)
+CLASSES=(NMSTEXT_Settings,curve_layout.NMSCURVE_Settings,curve_layout.NMSTEXT_OT_follow_curve,curve_layout.NMSTEXT_OT_restore_flat,curve_layout.NMSTEXT_OT_pick_curve,NMSTEXT_OT_generate,NMSTEXT_OT_change_font,NMSTEXT_OT_edit,NMSTEXT_OT_replace,NMSTEXT_OT_load,NMSTEXT_OT_select,NMSTEXT_OT_export,NMSTEXT_PT_panel)
+
+@persistent
+def cancel_preview_jobs_on_load(_):
+    _text_jobs.close();_text_pending.clear()
+    icon_ui._jobs.close();icon_ui._imports.clear();icon_ui._dirty.clear()
+
 
 def register():
     load_previews()
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Scene.nms_text_settings=PointerProperty(type=NMSTEXT_Settings)
+    bpy.types.Scene.nms_curve_settings=PointerProperty(type=curve_layout.NMSCURVE_Settings)
     icon_ui.register()
     bpy.types.VIEW3D_MT_object_context_menu.append(text_context_menu)
+    bpy.app.handlers.load_pre.append(cancel_preview_jobs_on_load)
     bpy.app.handlers.load_post.append(initialize_auto_switch_on_load)
     bpy.app.timers.register(initialize_auto_switch,first_interval=0)
     bpy.app.timers.register(load_banner,first_interval=.1)
 
 def unregister():
     global _previews,_pending_font
+    _text_jobs.close();_text_pending.clear();_text_previews.clear()
+    if bpy.app.timers.is_registered(refresh_text_previews):bpy.app.timers.unregister(refresh_text_previews)
     icon_ui.unregister()
     for editor in list(_active_inputs):editor.cleanup()
     _pending_font=None
+    if cancel_preview_jobs_on_load in bpy.app.handlers.load_pre:bpy.app.handlers.load_pre.remove(cancel_preview_jobs_on_load)
     if initialize_auto_switch_on_load in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(initialize_auto_switch_on_load)
     if bpy.app.timers.is_registered(initialize_auto_switch):bpy.app.timers.unregister(initialize_auto_switch)
     if bpy.app.timers.is_registered(load_banner):bpy.app.timers.unregister(load_banner)
     if bpy.app.timers.is_registered(apply_pending_font):bpy.app.timers.unregister(apply_pending_font)
     bpy.types.VIEW3D_MT_object_context_menu.remove(text_context_menu)
+    del bpy.types.Scene.nms_curve_settings
     del bpy.types.Scene.nms_text_settings
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
