@@ -471,10 +471,115 @@ def close_gaps(boundary,panels,size,limit,tolerance,edge_count,follow_edges=Fals
     return bool(available.any())
 
 
+def compact_fill(shapes,bounds,loops,cleanup,accuracy,max_parts):
+    """Use larger, overlapping faces where a one-pixel outline allowance permits.
+
+    The original contour fit is still the default. This alternate fit uses a
+    one-cell dilation only to nominate close-fitting rectangles, then counts
+    coverage on the inset panel faces so native bevels cannot masquerade as
+    filled area. It never crosses a hole wider than the small allowance.
+    """
+    n=256+round(accuracy*1.28)
+    target=svg_geometry.rasterize(shapes,n)
+    allowed=target.copy()
+    padded=np.pad(target,1)
+    for dy in (-1,0,1):
+        for dx in (-1,0,1):
+            allowed|=padded[1+dy:n+1+dy,1+dx:n+1+dx]
+    yy,xx=np.mgrid[:n,:n];xx=(xx+.5)/n;yy=(yy+.5)/n
+    m=math.ceil(n*math.sqrt(2))+4;gy,gx=np.mgrid[:m,:m]
+    gx=(gx+.5-m/2)/n;gy=(gy+.5-m/2)/n
+    rotations=[]
+    for angle in (0,math.pi/8,math.pi/4,3*math.pi/8,math.pi/2,
+                  5*math.pi/8,3*math.pi/4,7*math.pi/8):
+        c,s=math.cos(angle),math.sin(angle)
+        ix=np.floor((c*gx-s*gy+.5)*n).astype(int)
+        iy=np.floor((s*gx+c*gy+.5)*n).astype(int)
+        inside=(ix>=0)&(ix<n)&(iy>=0)&(iy<n)
+        ix=np.clip(ix,0,n-1);iy=np.clip(iy,0,n-1)
+        integral_allowed=integral((inside&allowed[iy,ix]).astype(np.int32))
+        options=[]
+        for h in (2,3,4,6,8,11,15,21,29,40,56):
+            w=math.ceil(h*RATIO)
+            if w>m:continue
+            valid=sums(integral_allowed,h,w)==h*w
+            if valid.any():options.append((h,w,valid))
+        rotations.append((angle,ix,iy,inside,options))
+    panels=[];remaining=target.copy()
+    goal=.99
+    while len(panels)<max_parts and remaining.sum()>target.sum()*(1-goal):
+        best=None;score=0
+        for angle,ix,iy,inside,options in rotations:
+            ii=integral((inside&remaining[iy,ix]).astype(np.int32))
+            for h,w,valid in options:
+                gain=np.where(valid,sums(ii,h,w),0)
+                idx=int(gain.argmax());value=int(gain.flat[idx])
+                if value>score:
+                    row,col=np.unravel_index(idx,gain.shape)
+                    best=(angle,h,w,row,col,valid);score=value
+        if best is None or score<1:break
+        angle,h,w,row,col,valid=best;valid[row,col]=False
+        c,s=math.cos(angle),math.sin(angle)
+        lx=(col+w/2-m/2)/n;ly=(row+h/2-m/2)/n
+        panel=(c*lx-s*ly+.5,s*lx+c*ly+.5,h/n,angle)
+        area=panel_mask(panel,xx,yy)
+        if np.any(area&~allowed):continue
+        face=panel_mask(panel,xx,yy,inset=True)
+        if not np.any(face&remaining):continue
+        panels.append(panel);remaining&=~face
+    if not panels:return None
+    footprint=np.zeros_like(target)
+    for panel in panels:footprint|=panel_mask(panel,xx,yy)
+    preview=np.empty((n,n,4),np.float32);preview[:]=(.055,.065,.08,1)
+    preview[target]=(.55,.19,.19,1);preview[footprint]=(.95,.69,.28,1)
+    total=max(1,int(target.sum()))
+    quality_n=n*2
+    quality_target=svg_geometry.rasterize(shapes,quality_n)
+    qy,qx=np.mgrid[:quality_n,:quality_n]
+    qx=(qx+.5)/quality_n;qy=(qy+.5)/quality_n
+    quality_face=np.zeros_like(quality_target)
+    quality_footprint=np.zeros_like(quality_target)
+    for panel in panels:
+        quality_face|=panel_mask(panel,qx,qy,inset=True)
+        quality_footprint|=panel_mask(panel,qx,qy)
+    quality_total=max(1,int(quality_target.sum()))
+    return {**cleanup,'panels':panels,'part_count':len(panels),
+            'coverage':float((footprint&target).sum()/total),
+            'face_coverage':float((quality_face&quality_target).sum()/quality_total),
+            'excess':float((quality_footprint&~quality_target).sum()/quality_total),
+            'quality_resolution':quality_n,
+            'bounds':bounds,'resolution':n,'preview':preview,'outline_parts':0,
+            '_fill_loops':[c.tolist() for c in loops],
+            'outline_tolerance':0,'outline_omissions':0,
+            'outline_relaxed':False,'unfilled':bool(remaining.any()),
+            'budget_hit':len(panels)>=max_parts and bool(remaining.any()),
+            'compact_fit':True}
+
+
 def fit_svg(source,accuracy=50,max_parts=300):
     accuracy=max(0,min(100,int(accuracy)));max_parts=max(1,min(2000,int(max_parts)))
     shapes,bounds,loops,cleanup=read_outline(source)
     result=fit_outline(shapes,bounds,loops,cleanup,accuracy,max_parts)
+    # A saturated high-detail contour fit can spend most of its budget on
+    # straight rims, leaving visible bevel gaps. Try the compact alternative
+    # only then, and keep the original unless it is clearly better on both
+    # native-face coverage and part count with a tightly bounded overdraw.
+    if (accuracy>=75 and result['part_count']>=max_parts and
+            60<=max_parts<=400 and not (result['excess']>.05 and result['coverage']<.8)):
+        compact=compact_fill(shapes,bounds,loops,cleanup,accuracy,max_parts)
+        if compact is not None and compact['part_count']<=result['part_count']*.9:
+            n=compact['quality_resolution'];target=svg_geometry.rasterize(shapes,n)
+            yy,xx=np.mgrid[:n,:n];xx=(xx+.5)/n;yy=(yy+.5)/n
+            baseline_face=np.zeros_like(target)
+            baseline_footprint=np.zeros_like(target)
+            for panel in result['panels']:
+                baseline_face|=panel_mask(panel,xx,yy,inset=True)
+                baseline_footprint|=panel_mask(panel,xx,yy)
+            face_coverage=float((baseline_face&target).sum()/max(1,target.sum()))
+            baseline_excess=float((baseline_footprint&~target).sum()/max(1,target.sum()))
+            if (compact['face_coverage']>=face_coverage+.01 and
+                    compact['excess']<=min(.05,baseline_excess+.025)):
+                return compact
     # Relaxing the two sides of a traced hairline independently can displace
     # the whole line. If that happens, fit within the recovered features and
     # report missing coverage rather than inventing broad wedges outside them.

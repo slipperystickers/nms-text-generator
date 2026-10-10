@@ -522,8 +522,13 @@ class NMSICON_OT_details(bpy.types.Operator):
         s=context.scene.nms_icon_settings;result=_cache.get(key(s));ui=self.layout
         if result:
             ui.label(text=f"{result['part_count']:,} panels / limit {s.max_parts:,}")
-            ui.label(text=f"Outline: {result['outline_parts']} / Fill: {result['part_count']-result['outline_parts']}")
-            ui.label(text=f"Sampled coverage: {result['coverage']:.1%}")
+            if result.get('compact_fit'):
+                ui.label(text='Compact fit: larger overlapping panels')
+                ui.label(text=f"Estimated panel-face coverage: {result['face_coverage']:.1%}")
+                ui.label(text=f"Outline allowance: {result['excess']:.1%} of SVG area")
+            else:
+                ui.label(text=f"Outline: {result['outline_parts']} / Fill: {result['part_count']-result['outline_parts']}")
+                ui.label(text=f"Sampled coverage: {result['coverage']:.1%}")
             ui.label(text='Preview: estimated palette colours; red = omitted detail' if s.match_colors else 'Preview: amber = fitted; red = omitted detail')
             if result.get('outline_recovered'):ui.label(text='SVG outline simplified for import')
         if s.status:

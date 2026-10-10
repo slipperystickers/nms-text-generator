@@ -1,12 +1,7 @@
-NMScribe 2.2.12 improves SVG import and recovery for traced artwork.
+NMScribe 2.2.13 improves panel efficiency and visible coverage for high-accuracy traced SVGs.
 
-- Round stroke joins no longer multiply small SVG files into hundreds of thousands of unnecessary points. Both supplied Heart Pirates traces now reach Simplify & Import.
-- Recoverable import/fitting failures attempt a bounded local feature trace. Simplify & Import accepts the recovered artwork; the source file stays unchanged.
-- Rebuild SVG Features creates fresh paths from visible outlines and cutouts. Solid colour matching is preserved when enabled. Optional line strengthening can help thin monochrome artwork; it changes line weight and may narrow gaps.
-- Rebuilt imports retain their original SVG in the saved icon settings and identify the rebuilt preview. Review the preview before generating parts.
-- The sidebar shows the actual failure and offers recovery controls. A failed replacement preserves the previously loaded icon and its preview.
-- Thin traces avoid a fitting fallback that could introduce broad wedges outside the intended lines. Very thin artwork still needs more parts and may have low coverage at small budgets.
+- When a single-colour SVG reaches its part limit, NMScribe compares the existing contour fit with a compact fit that uses larger, overlapping panels. It selects the compact fit only when it saves at least 10% of parts, improves usable panel-face coverage, and keeps outline overdraw tightly bounded.
+- Fit Details now shows estimated panel-face coverage and outline allowance for compact results. Accuracy remains a detail control, not a promise of pixel-perfect reproduction.
+- On the supplied filled Heart Pirates SVG at 100% Accuracy and a 300-part limit, the fit uses 203 native Storage Panels instead of 300. At a 768-pixel sample, usable-face coverage increased from 95.9% to 98.1%; overdraw beyond the SVG increased from 1.7% to 3.1% of the artwork area. Blender 5.1.2 native generation and JSON export passed.
 
-Recovery is approximate and bounded. Bitmap images, text that has not been converted to paths, stylesheets, clipping, masks, and filters still need an appropriate plain-path export; recovery does not guess their appearance or fetch external files.
-
-Includes the existing 2.2.11 local error logging and reviewable online report prompt with Discord/anonymous choice and screenshot/video attachments.
+The compact fit is approximate. Inspect curved edges and any fine cutouts before updating existing artwork. The 2.2.12 SVG rebuild, source preservation, and error-reporting behavior remains available.

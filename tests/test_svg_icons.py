@@ -297,4 +297,12 @@ class SvgTests(unittest.TestCase):
         self.assertLess(result['excess'],.01)
         self.assertLessEqual(result['part_count'],300)
 
+    def test_filled_trace_uses_fewer_faces_without_visible_seam_gaps(self):
+        source=(Path(__file__).parent/'fixtures/icon_heart_pirates.svg').read_text()
+        result=icon_fit.fit_svg(source,100,300)
+        self.assertTrue(result.get('compact_fit'))
+        self.assertLessEqual(result['part_count'],230)
+        self.assertGreaterEqual(result['face_coverage'],.975)
+        self.assertLess(result['excess'],.04)
+
 if __name__=='__main__':unittest.main()

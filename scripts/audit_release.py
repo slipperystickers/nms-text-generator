@@ -6,7 +6,10 @@ from pathlib import Path
 from zipfile import ZipFile
 
 ROOT=Path(__file__).resolve().parents[1];out=ROOT/'dist'
-archive=out/'NMS_Text_Generator_2.2.12.zip'
+source_module=ast.parse((ROOT/'nms_text_generator/__init__.py').read_text(encoding='utf-8'))
+source_info=next(ast.literal_eval(n.value) for n in source_module.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='bl_info' for t in n.targets))
+version='.'.join(map(str,source_info['version']))
+archive=out/f'NMS_Text_Generator_{version}.zip'
 with ZipFile(archive) as z:
     assert z.testzip() is None
     names=z.namelist();assert len(names)==len(set(names))==36
@@ -21,7 +24,7 @@ with ZipFile(archive) as z:
             assert b'C:\\Users\\kengo' not in data and b'C:/Users/kengo' not in data
     module=ast.parse(z.read('nms_text_generator/__init__.py'))
     info=next(ast.literal_eval(n.value) for n in module.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='bl_info' for t in n.targets))
-    assert info['version']==(2,2,12)
+    assert info['version']==source_info['version']
     palette=json.loads(z.read('nms_text_generator/color_catalog.json'))
     assert len(palette['palettes'])==151
     assert [p['id'] for p in palette['palettes'][115:]]==[f'STATION{i}' for i in range(36)]
@@ -31,4 +34,4 @@ with ZipFile(archive) as z:
 for line in (out/'SHA256SUMS.txt').read_text().splitlines():
     digest,name=line.split('  ',1)
     assert hashlib.sha256((out/name).read_bytes()).hexdigest()==digest
-print(json.dumps({'status':'LAUNCH_ARTIFACT_AUDIT_PASSED','version':'2.2.12','files':len(names),'zip_bytes':archive.stat().st_size},indent=2))
+print(json.dumps({'status':'LAUNCH_ARTIFACT_AUDIT_PASSED','version':version,'files':len(names),'zip_bytes':archive.stat().st_size},indent=2))

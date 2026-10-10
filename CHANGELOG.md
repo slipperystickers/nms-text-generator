@@ -1,3 +1,9 @@
+## 2.2.13 - Fewer panels and better face coverage on traced SVGs
+
+- Try a compact panel fit when a high-accuracy single-colour SVG reaches its part limit. Larger, overlapping panels cover straight features without reserving most of the budget for outline fragments.
+- Count the usable native panel faces when choosing the result, and keep the existing contour fit unless the compact fit saves at least 10% of parts, improves face coverage, and stays within a small outline allowance.
+- Show estimated face coverage and outline allowance in Fit Details for compact results. The source SVG and intentional large cutouts remain unchanged.
+
 ## 2.2.8 - Highlighted Generate and reliable circles
 
 - Larger, theme-accent Generate Text and Generate Icon buttons.
