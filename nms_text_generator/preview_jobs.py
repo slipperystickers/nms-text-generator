@@ -30,6 +30,32 @@ class SimplificationNeeded(ValueError):
     pass
 
 
+def fit_icon(args, preflight=False, rebuild=False, strengthen=False):
+    """Try the vector fit, then one bounded feature trace on recoverable failure."""
+    from . import color_match,icon_fit,svg_outline
+    args=list(args);source=args[0];info={}
+    def fit():
+        return (color_match.fit_svg(*args[:3],args[4],args[5]) if args[3]
+                else icon_fit.fit_svg(*args[:3]))
+    try:
+        if rebuild:raise ValueError('Rebuild requested')
+        if preflight:
+            if args[3]:color_match.preflight(source,args[4],allow_simplify=False)
+            else:icon_fit.read_outline(source,allow_simplify=False)
+        return fit()
+    except icon_fit.SimplificationRequired:
+        raise
+    except ValueError as original:
+        report('Tracing SVG features')
+        try:args[0],info=svg_outline.rebuild_svg(source,with_colors=args[3],strengthen=strengthen)
+        except ValueError as recovery:
+            raise ValueError(f'{original} Rebuild could not trace this artwork: {recovery}') from recovery
+        if preflight:
+            raise icon_fit.SimplificationRequired('Normal import failed. Choose Simplify & Import to rebuild the visible SVG features. Small details may change.')
+        result=fit()
+        return {**result,**info,'_rebuilt_source':args[0]}
+
+
 class Job:
     def __init__(self, key, payload):
         self.key = key
@@ -124,11 +150,8 @@ def worker(request):
         progress('Reading SVG' if data['kind'] == 'icon' else 'Laying out text')
         if data['kind'] == 'icon':
             args = data['args']
-            if data.get('preflight'):
-                if args[3]:color_match.preflight(args[0],args[4],allow_simplify=False)
-                else:icon_fit.read_outline(args[0],allow_simplify=False)
-            result = (color_match.fit_svg(*args[:3], args[4], args[5]) if args[3]
-                      else icon_fit.fit_svg(*args[:3]))
+            result = preview_jobs.fit_icon(args,preflight=data.get('preflight',False),
+                                           rebuild=data.get('rebuild',False),strengthen=data.get('strengthen',False))
             np.save(directory/'preview.npy', result.pop('preview'), allow_pickle=False)
         else:
             result = layout.plan(**data['args'])

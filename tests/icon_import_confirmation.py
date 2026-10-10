@@ -15,7 +15,7 @@ from nms_text_generator import icon_ui as icons,icon_fit,svg_outline
 addon.register()
 context=bpy.context;s=context.scene.nms_icon_settings
 simple='<svg><rect width="100" height="50"/></svg>'
-points=' '.join(f'{i},{50+20*math.sin(i/20):.3f}' for i in range(140))
+points=' '.join(f'{i},{50+20*math.sin(i/20):.3f}' for i in range(700))
 dense=f'<svg><polyline points="{points}" fill="none" stroke="white" stroke-width="5" stroke-linejoin="round"/></svg>'
 with tempfile.TemporaryDirectory(prefix='nmscribe-import-confirmation-') as folder:
     path=Path(folder)/'detailed.svg';path.write_text(dense,encoding='utf-8')
@@ -49,5 +49,29 @@ with tempfile.TemporaryDirectory(prefix='nmscribe-import-confirmation-') as fold
     with patch.object(svg_outline,'recover',side_effect=AssertionError('Unapproved trace')):
         assert bpy.ops.nms_icon.import_svg('EXEC_DEFAULT',filepath=str(path))=={'CANCELLED'}
     assert bpy.ops.nms_icon.import_svg('EXEC_DEFAULT',filepath=str(path),simplify=True)=={'FINISHED'}
+    # Both actual reporter files reach the same approval path and load.
+    for fixture in ('icon_heart_pirates.svg','icon_heart_pirates_outline.svg'):
+        supplied=ROOT/'tests/fixtures'/fixture
+        digest=hashlib.sha256(supplied.read_bytes()).hexdigest()
+        assert bpy.ops.nms_icon.import_svg('EXEC_DEFAULT',filepath=str(supplied),simplify=True)=={'FINISHED'}
+        assert s.source==supplied.read_text()
+        assert icons.analyze(s)['part_count']<=s.max_parts
+        assert hashlib.sha256(supplied.read_bytes()).hexdigest()==digest
+    # Rebuild stages a fresh SVG and stores the original in the saved config.
+    original=s.source
+    assert bpy.ops.nms_icon.rebuild_import('EXEC_DEFAULT',source=original,source_name='rebuilt outline')=={'FINISHED'}
+    assert s.original_source==original and s.source!=original and s.import_note
+    assert icons.config(s)['original_source']==original
+    # Async failures must not poison the previous accepted icon's cache/status.
+    old=icons.config(s);old_status=s.status;old_key=icons.key(s)
+    name=context.scene.name
+    fake_job=SimpleNamespace(key=('pending',),poll=lambda:True,result=Mock(side_effect=ValueError('Example SVG failure')))
+    jobs=SimpleNamespace(active={name:fake_job},cancel=Mock())
+    icons._imports[name]=(dict(old,source='<svg/>',source_name='failed replacement'),old_key)
+    with patch.object(icons,'_jobs',jobs):icons.refresh()
+    assert icons.config(s)==old and s.status==old_status
+    assert old_key not in icons._errors
+    assert icons._import_errors[name][1]=='Example SVG failure'
+    assert name not in icons._imports
 addon.unregister()
 print('SVG_IMPORT_CONFIRM_APPROVE_CANCEL_AND_SOURCE_PRESERVATION_PASSED',flush=True)

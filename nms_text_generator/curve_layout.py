@@ -1,4 +1,5 @@
 """Sample Blender curves without modifying them; place rigid native parts."""
+from .furby_errors import report_error
 from bisect import bisect_right
 import importlib
 import json
@@ -226,7 +227,7 @@ class NMSTEXT_OT_follow_curve(bpy.types.Operator):
             for field,value in DEFAULTS.items():setattr(settings,field,value)
             self.report({'INFO'},f'{count} existing panels now follow {curve.name}. Ctrl-Z to undo.')
             return {'FINISHED'}
-        except Exception as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
+        except Exception as exc:report_error(self,{'ERROR'},str(exc));return {'CANCELLED'}
 
 
 class NMSTEXT_OT_restore_flat(bpy.types.Operator):
@@ -241,7 +242,7 @@ class NMSTEXT_OT_restore_flat(bpy.types.Operator):
         except (ValueError,KeyError):return False
     def execute(self,context):
         try:restore(context,selection(context,False)[0]);return {'FINISHED'}
-        except Exception as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
+        except Exception as exc:report_error(self,{'ERROR'},str(exc));return {'CANCELLED'}
 
 
 class Path:

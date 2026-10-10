@@ -1,7 +1,8 @@
+from .furby_errors import report_error
 bl_info = {
     'name': 'NMScribe for Blender Base Builder',
     'author': 'FuriousFurby',
-    'version': (2, 2, 8),
+    'version': (2, 2, 12),
     'blender': (5, 1, 0),
     'location': '3D View > Sidebar > NMS Text',
     'description': 'Native-panel text and SVG icons through NMS Base Builder; separate NMS Text tab',
@@ -574,7 +575,7 @@ class NMSTEXT_OT_generate(bpy.types.Operator):
             self.report({'INFO'},f"Created {root['nms_text_part_count']} native parts")
             return {'FINISHED'}
         except Exception as exc:
-            self.report({'ERROR'},str(exc))
+            report_error(self,{'ERROR'},str(exc))
             return {'CANCELLED'}
 
 class NMSTEXT_OT_change_font(bpy.types.Operator):
@@ -600,7 +601,7 @@ class NMSTEXT_OT_change_font(bpy.types.Operator):
         except Exception as exc:
             load_settings(context.scene.nms_text_settings,json.loads(root[CONFIG]))
             context.scene.nms_text_settings.edit_status='Font / panel change failed: '+str(exc)
-            self.report({'ERROR'},str(exc))
+            report_error(self,{'ERROR'},str(exc))
             return {'CANCELLED'}
 
 class NMSTEXT_OT_edit(bpy.types.Operator):
@@ -619,7 +620,7 @@ class NMSTEXT_OT_edit(bpy.types.Operator):
     def invoke(self,context,event):
         root=selected_root(context)
         if root is None:
-            self.report({'ERROR'},'Select a panel belonging to generated NMS text first.')
+            report_error(self,{'ERROR'},'Select a panel belonging to generated NMS text first.')
             return {'CANCELLED'}
         self.root_name=root.name
         self.owner=root.get(OWNER)
@@ -650,7 +651,7 @@ class NMSTEXT_OT_edit(bpy.types.Operator):
             return self.invoke(context,None)
         root=bpy.data.objects.get(self.root_name)
         if root is None or not root.get(ROOT) or root.get(OWNER)!=self.owner:
-            self.report({'ERROR'},'The original text group is no longer available.')
+            report_error(self,{'ERROR'},'The original text group is no longer available.')
             return {'CANCELLED'}
         try:
             config=config_from_settings(self)
@@ -660,7 +661,7 @@ class NMSTEXT_OT_edit(bpy.types.Operator):
             self.report({'INFO'},'NMS text updated')
             return {'FINISHED'}
         except Exception as exc:
-            self.report({'ERROR'},str(exc))
+            report_error(self,{'ERROR'},str(exc))
             return {'CANCELLED'}
 
 def text_context_menu(self,context):
@@ -686,7 +687,7 @@ class NMSTEXT_OT_replace(bpy.types.Operator):
             self.report({'INFO'},f"Replaced selected text: {root['nms_text_part_count']} parts")
             return {'FINISHED'}
         except Exception as exc:
-            self.report({'ERROR'},str(exc))
+            report_error(self,{'ERROR'},str(exc))
             return {'CANCELLED'}
 
 class NMSTEXT_OT_load(bpy.types.Operator):
@@ -736,7 +737,7 @@ class NMSTEXT_OT_export(bpy.types.Operator,ExportHelper):
             self.report({'INFO'},f"Exported {len(payload['Objects'])} native parts")
             return {'FINISHED'}
         except Exception as exc:
-            self.report({'ERROR'},str(exc))
+            report_error(self,{'ERROR'},str(exc))
             return {'CANCELLED'}
 
 _text_jobs=preview_jobs.Jobs()
@@ -818,7 +819,7 @@ class NMSTEXT_PT_panel(bpy.types.Panel):
         donation.label(text='Corvette Class Builders (CCB)')
         brand.operator('wm.url_open',text='CCB / Traveller Toolkit',icon='URL').url='https://discord.gg/arbW3DvM5y'
         ui.prop(settings,'mode',expand=True)
-        ui.label(text='Native panel lettering - v2.2.8')
+        ui.label(text='Native panel lettering - v2.2.12')
         if settings.mode=='ICON':
             icon_ui.draw(ui,context)
             return
@@ -874,6 +875,8 @@ def cancel_preview_jobs_on_load(_):
 
 
 def register():
+    from . import release_updates
+    release_updates.register('nmscribe', '2.2.12', 'NMS Text')
     load_previews()
     for cls in CLASSES:
         bpy.utils.register_class(cls)
@@ -887,6 +890,8 @@ def register():
     bpy.app.timers.register(load_banner,first_interval=.1)
 
 def unregister():
+    from . import release_updates
+    release_updates.unregister()
     global _previews,_pending_font
     _text_jobs.close();_text_pending.clear();_text_previews.clear()
     if bpy.app.timers.is_registered(refresh_text_previews):bpy.app.timers.unregister(refresh_text_previews)

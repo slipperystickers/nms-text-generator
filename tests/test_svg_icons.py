@@ -171,10 +171,10 @@ class SvgTests(unittest.TestCase):
         self.assertEqual(sum(len(c) for cs,_ in shapes for c in cs),4)
 
     def test_complex_round_stroke_recovers_under_part_cap(self):
-        points=' '.join(f'{i},{50+20*np.sin(i/20):.3f}' for i in range(140))
+        points=' '.join(f'{i},{50+20*np.sin(i/20):.3f}' for i in range(700))
         source=doc(f'<polyline points="{points}" fill="none" stroke="black" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>')
         raw,_=svg.read_svg(source,cleanup=False)
-        self.assertGreater(sum(len(c) for cs,_ in raw for c in cs),12000)
+        self.assertLess(sum(len(c) for cs,_ in raw for c in cs),6000)
         result=icon_fit.fit_svg(source,50,100)
         self.assertTrue(result['outline_recovered'])
         self.assertGreater(result['part_count'],0)
@@ -223,7 +223,7 @@ class SvgTests(unittest.TestCase):
             svg_outline.trace_mask((xx+yy)%2==0)
 
     def test_preflight_requests_permission_before_tracing(self):
-        points=' '.join(f'{i},{50+20*np.sin(i/20):.3f}' for i in range(140))
+        points=' '.join(f'{i},{50+20*np.sin(i/20):.3f}' for i in range(700))
         source=doc(f'<polyline points="{points}" fill="none" stroke="black" stroke-width="5" stroke-linejoin="round"/>')
         shapes,_=svg.read_svg(source)
         with patch.object(svg_outline,'recover',side_effect=AssertionError('Must not trace before consent')):
@@ -240,5 +240,61 @@ class SvgTests(unittest.TestCase):
             icon_fit.read_outline(source,allow_simplify=True)
             with self.assertRaises(icon_fit.SimplificationRequired):
                 icon_fit.read_outline(source,allow_simplify=False)
+
+    def test_round_sectors_preserve_stroke_silhouette(self):
+        # Compare against the previous full-disk construction, including
+        # mirrored/anisotropic transforms, both turn directions and reversals.
+        for path in ('M0 0H40V40H0Z','M0 0L40 20L0 40','M0 0H40L0 1','M0 0H40H0'):
+            for transform in ('','translate(100 0) scale(-2 .7)'):
+                source=doc(f'<path d="{path}" transform="{transform}" fill="none" stroke="black" stroke-width="8" stroke-linejoin="round"/>')
+                shapes,bounds=svg.read_svg(source)
+                with patch.object(svg,'round_join',side_effect=lambda p,u,v,n,h:svg.circle(*p,h,h)):
+                    old,old_bounds=svg.read_svg(source)
+                np.testing.assert_allclose(bounds,old_bounds,atol=.001)
+                actual=svg.rasterize(shapes,512);expected=svg.rasterize(old,512)
+                self.assertGreater((actual&expected).sum()/(actual|expected).sum(),.998)
+
+    def test_traced_heart_pirates_files_reach_simplify_and_keep_holes(self):
+        for name in ('icon_heart_pirates.svg','icon_heart_pirates_outline.svg'):
+            source=(Path(__file__).parent/'fixtures'/name).read_text()
+            with patch.object(svg_outline,'recover',side_effect=AssertionError('Unapproved trace')):
+                with self.assertRaises(icon_fit.SimplificationRequired):
+                    icon_fit.read_outline(source,allow_simplify=False)
+            shapes,bounds,loops,info=icon_fit.read_outline(source)
+            self.assertTrue(info['outline_recovered'])
+            self.assertLess(info['input_segments'],50000)
+            self.assertGreater(len(loops),5)
+            before=svg.rasterize(shapes,1024)
+            after=svg.rasterize([(loops,'nonzero')],1024)
+            # Thin outlines have only a few recovery pixels across their width.
+            self.assertGreater((before&after).sum()/(before|after).sum(),.95)
+            # Eye/nose/teeth cutouts must not become a solid blob on import.
+            self.assertLess(after.mean(),.55)
+
+    def test_rebuild_emits_plain_paths_and_preserves_holes_and_colours(self):
+        source=doc('<rect width="100" height="100" fill="red"/><rect x="20" y="20" width="60" height="60" fill="blue"/>')
+        rebuilt,info=svg_outline.rebuild_svg(source,with_colors=True,size=256)
+        shapes,bounds,paints=svg.read_svg(rebuilt,with_colors=True)
+        self.assertTrue(info['rebuilt']);self.assertNotIn('stroke=',rebuilt)
+        self.assertEqual(set(paints),{(1.,0.,0.),(0.,0.,1.)})
+        blue=paints.index((0.,0.,1.));red=paints.index((1.,0.,0.))
+        self.assertTrue(icon_fit.contains([shapes[blue]],[[.5,.5]])[0])
+        self.assertFalse(icon_fit.contains([shapes[red]],[[.5,.5]])[0])
+        rebuilt,_=svg_outline.rebuild_svg(RING,size=256)
+        shapes,_=svg.read_svg(rebuilt)
+        self.assertFalse(icon_fit.contains(shapes,[[.5,.5]])[0])
+        self.assertTrue(icon_fit.contains(shapes,[[.1,.1]])[0])
+
+    def test_rebuild_keeps_external_resources_and_bitmaps_rejected(self):
+        for source in (doc('<image href="file:///secret"/>'),doc('<script/>'),doc('<text>Hello</text>')):
+            with self.assertRaises(ValueError):svg_outline.rebuild_svg(source)
+
+    def test_thin_trace_fit_does_not_invent_broad_wedges(self):
+        source=(Path(__file__).parent/'fixtures/icon_heart_pirates_outline.svg').read_text()
+        result=icon_fit.fit_svg(source,50,300)
+        self.assertTrue(result.get('feature_fit'))
+        self.assertGreater(result['coverage'],.2)
+        self.assertLess(result['excess'],.01)
+        self.assertLessEqual(result['part_count'],300)
 
 if __name__=='__main__':unittest.main()

@@ -121,6 +121,21 @@ def painted(value):
 def circle(x,y,rx,ry):
     return [np.array([x+rx*math.cos(a),y+ry*math.sin(a)]) for a in np.linspace(0,2*math.pi,97)[:-1]]
 
+def round_join(center,u,v,normal,half):
+    """Only the outer circular sector is missing between segment rectangles.
+
+    A disk at every flattened curve vertex explodes otherwise modest files.
+    Bound the sector's sagitta to 0.22% of the stroke radius (7.5 degrees),
+    independent of the path length. Straight joins need no extra geometry.
+    """
+    turn=math.atan2(u[0]*v[1]-u[1]*v[0],float(np.clip(u@v,-1,1)))
+    if abs(turn)<1e-10:return []
+    outer=normal*(-1 if turn>0 else 1)
+    angle=math.atan2(outer[1],outer[0])
+    steps=max(1,math.ceil(abs(turn)/(math.pi/24)))
+    return [center]+[center+half*np.array([math.cos(a),math.sin(a)])
+                     for a in np.linspace(angle,angle+turn,steps+1)]
+
 def geometry(e):
     kind=tag(e)
     if kind=='path':return paths(e.get('d',''))
@@ -143,7 +158,7 @@ def geometry(e):
         return [(line,True)]
     raise ValueError('Unsupported SVG element: '+kind+'. Convert it to plain paths first.')
 
-def read_svg(source, *, cleanup=True, with_colors=False):
+def read_svg(source, *, cleanup=True, with_colors=False, rebuild=False):
     if len(source.encode('utf-8'))>MAX_BYTES:raise ValueError('SVG is larger than 1 MB. Simplify it before import.')
     # Illustrator's external SVG 1.1 DTD is only a format declaration. Discard
     # it locally; never resolve its URL. Custom/internal entities stay forbidden.
@@ -158,6 +173,7 @@ def read_svg(source, *, cleanup=True, with_colors=False):
     if len(elements)>4096:raise ValueError('SVG has more than 4096 elements. Simplify it first.')
     if any(tag(e)=='style' and (e.text or '').strip() for e in elements):raise ValueError('SVG stylesheets are not supported. Export with inline styles or presentation attributes.')
     ids={e.get('id'):e for e in elements if e.get('id')};shapes=[];paints=[];visits=0;points_used=0
+    point_limit=500000 if rebuild else 100000
     def add(contours,rule,matrix,paint,opacity):
         nonlocal points_used
         cs=[]
@@ -166,7 +182,7 @@ def read_svg(source, *, cleanup=True, with_colors=False):
             arr=np.asarray(contour,float);arr=(matrix@np.column_stack((arr,np.ones(len(arr)))).T).T[:,:2]
             if not np.isfinite(arr).all() or abs(arr).max()>1e9:raise ValueError('SVG coordinates are invalid or too large.')
             cs.append(arr);points_used+=len(arr)
-        if points_used>100000:raise ValueError('SVG is too complex; simplify paths first.')
+        if points_used>point_limit:raise ValueError('SVG is too complex; rebuild or simplify paths first.')
         if cs:
             if with_colors:
                 from .color_match import parse_color
@@ -240,11 +256,12 @@ def read_svg(source, *, cleanup=True, with_colors=False):
             stroke_contours=[];stroke_points=0
             def stroke_add(contour):
                 nonlocal stroke_points
+                if len(contour)<3:return
                 arr=np.asarray(contour,float)
                 signed=np.sum(arr[:,0]*np.roll(arr[:,1],-1)-arr[:,1]*np.roll(arr[:,0],-1))
                 if abs(signed)>1e-18:
                     stroke_points+=len(arr)
-                    if points_used+stroke_points>100000:
+                    if points_used+stroke_points>point_limit:
                         raise ValueError('SVG still has too many stroke details after automatic cleanup. Try exporting a simpler silhouette.')
                     stroke_contours.append(arr if signed>0 else arr[::-1])
             for line,closed in lines:
@@ -261,7 +278,7 @@ def read_svg(source, *, cleanup=True, with_colors=False):
                 if closed:pairs.append((segs[-1],segs[0]))
                 for first,second in pairs:
                     a,b,u,n=first;_,_,v,m=second
-                    if join=='round':stroke_add(circle(*b,half,half));continue
+                    if join=='round':stroke_add(round_join(b,u,v,n,half));continue
                     for sign in (-1,1):
                         p=b+n*sign;q=b+m*sign;corner=[b,p,q]
                         det=u[0]*v[1]-u[1]*v[0]

@@ -1,4 +1,5 @@
 """Separate SVG mode and ownership. Text collections are never SVG targets."""
+from .furby_errors import report_error
 import hashlib
 import importlib
 import json
@@ -33,6 +34,7 @@ FAMILY_NAMES={'LEGACY':'Basic','FLAGS':'Flags','STONENATURAL':'Stone · natural'
 _loading=False
 _jobs=preview_jobs.Jobs()
 _imports={}
+_import_errors={}
 
 def host():return importlib.import_module(__package__)
 def selected(context):
@@ -86,13 +88,26 @@ def refresh():
         s=scene.nms_icon_settings
         try:
             result=job.result()
+            if pending and result.get('_rebuilt_source'):
+                pending[0].update(source=result['_rebuilt_source'],original_source=pending[0]['source'],
+                                  import_note='SVG rebuilt by tracing visible features. Small details may differ.')
             if len(_cache)>=6:_cache.pop(next(iter(_cache)))
-            _cache[job.key]=result
-            if pending:load(s,pending[0])
+            if pending:
+                _import_errors.pop(name,None)
+                _errors.discard(job.key)
+                load(s,pending[0])
+            _cache[key(s)]=result
             analyze(s)
-        except preview_jobs.SimplificationNeeded:
-            if pending:bpy.ops.nms_icon.simplify_import('INVOKE_DEFAULT',source=pending[0]['source'],source_name=pending[0]['source_name'])
-        except Exception as exc:s.status=str(exc);_errors.add(key(s))
+        except preview_jobs.SimplificationNeeded as exc:
+            if pending:
+                _import_errors[name]=(pending[0],str(exc),True)
+                bpy.ops.nms_icon.simplify_import('INVOKE_DEFAULT',source=pending[0]['source'],source_name=pending[0]['source_name'])
+            else:s.status=str(exc);_errors.add(key(s))
+        except Exception as exc:
+            # A failed replacement belongs to its pending file, not the last
+            # usable icon. Keep the previous preview and generation available.
+            if pending:_import_errors[name]=(pending[0],str(exc),False)
+            else:s.status=str(exc);_errors.add(key(s))
         finally:_jobs.cancel(name);_imports.pop(name,None)
     for name,when in list(_dirty.items()):
         if when>now or name in _imports:continue
@@ -142,7 +157,7 @@ def analyze(settings):
     else:settings.status='Ready. Outline first, then interior fill.'
     return result
 
-FIELDS=('source','source_name','accuracy','max_parts','height','panel_type','orientation','face_offset','palette','match_colors','include_station','color_overrides','use_curve','curve_name','curve_fit')
+FIELDS=('source','source_name','original_source','import_note','accuracy','max_parts','height','panel_type','orientation','face_offset','palette','match_colors','include_station','color_overrides','use_curve','curve_name','curve_fit')
 def config(settings):return {field:getattr(settings,field) for field in FIELDS}
 def load(settings,data):
     global _loading
@@ -150,6 +165,7 @@ def load(settings,data):
     try:
         # Old saved icons must retain their original single-colour behavior.
         data=dict(data);data.setdefault('match_colors',False);data.setdefault('include_station',False);data.setdefault('color_overrides','{}')
+        data.setdefault('original_source','');data.setdefault('import_note','')
         for field,value in curve_layout.DEFAULTS.items():data.setdefault(field,value)
         data['color_overrides']=color_match.overrides_json(data['color_overrides'])
         for field in FIELDS:setattr(settings,field,data[field])
@@ -257,18 +273,26 @@ class NMSICON_Settings(bpy.types.PropertyGroup):
     curve_fit: BoolProperty(name='Fit to curve length',default=True,description='Uniformly scale the artwork to the curve length')
     status: StringProperty(options={'SKIP_SAVE'})
     preview_name: StringProperty(options={'SKIP_SAVE'})
+    original_source: StringProperty(options={'HIDDEN'})
+    import_note: StringProperty(options={'HIDDEN'})
 
-def import_source(context,source,source_name,preflight=False):
+def import_source(context,source,source_name,preflight=False,rebuild=False,strengthen=False):
     """Commit only after the accepted SVG has a valid fit; Cancel never calls this."""
     s=context.scene.nms_icon_settings
-    data=config(s);data.update(source=source,source_name=source_name,color_overrides='{}')
+    data=config(s);data.update(source=source,source_name=source_name,color_overrides='{}',original_source='',import_note='')
     if bpy.app.background:
-        result=fitted(source,s.accuracy,s.max_parts,s.match_colors,s.include_station)
+        result=preview_jobs.fit_icon([source,s.accuracy,s.max_parts,s.match_colors,s.include_station,'{}'],preflight,rebuild,strengthen)
+        if result.get('_rebuilt_source'):
+            data.update(source=result['_rebuilt_source'],original_source=source,import_note='SVG rebuilt by tracing visible features. Small details may differ.')
+        k=(hashlib.sha256(data['source'].encode()).hexdigest(),s.accuracy,s.max_parts,s.match_colors,s.include_station,'{}')
+        _cache[k]=result
         load(s,data);context.scene.nms_text_settings.mode='ICON'
         return result
     k=(hashlib.sha256(source.encode('utf-8')).hexdigest(),s.accuracy,s.max_parts,s.match_colors,s.include_station,'{}')
     name=context.scene.name
-    _jobs.start(name,k,{'kind':'icon','preflight':preflight,'args':[source,s.accuracy,s.max_parts,s.match_colors,s.include_station,'{}']})
+    _import_errors.pop(name,None)
+    _jobs.cancel(name)
+    _jobs.start(name,k,{'kind':'icon','preflight':preflight,'rebuild':rebuild,'strengthen':strengthen,'args':[source,s.accuracy,s.max_parts,s.match_colors,s.include_station,'{}']})
     _imports[name]=(data,key(s));_dirty.pop(name,None)
     context.scene.nms_text_settings.mode='ICON'
     if not bpy.app.timers.is_registered(refresh):bpy.app.timers.register(refresh,first_interval=.1)
@@ -287,8 +311,8 @@ class NMSICON_OT_simplify_import(bpy.types.Operator):
 
     def draw(self,context):
         ui=self.layout
-        ui.label(text='This SVG has a very detailed outline.',icon='INFO')
-        ui.label(text='Simplify it using fewer line segments?')
+        ui.label(text='This SVG has dense or overlapping paths.',icon='INFO')
+        ui.label(text='Combine strokes and rebuild a simpler outline?')
         ui.separator()
         ui.label(text='Very small details may change.')
         ui.label(text='Your original SVG file will not be changed.')
@@ -298,7 +322,7 @@ class NMSICON_OT_simplify_import(bpy.types.Operator):
             import_source(context,self.source,self.source_name)
             self.report({'INFO'},'SVG simplified and imported. Preview it, then generate panels.')
             return {'FINISHED'}
-        except Exception as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
+        except Exception as exc:report_error(self,{'ERROR'},str(exc));return {'CANCELLED'}
 
 
 class NMSICON_OT_import(bpy.types.Operator,ImportHelper):
@@ -312,22 +336,35 @@ class NMSICON_OT_import(bpy.types.Operator,ImportHelper):
             path=Path(self.filepath)
             if path.stat().st_size>svg_geometry.MAX_BYTES:raise ValueError('SVG is larger than 1 MB. Simplify it first.')
             source=path.read_text(encoding='utf-8-sig')
-            if not self.simplify and bpy.app.background:
-                try:
-                    if context.scene.nms_icon_settings.match_colors:
-                        color_match.preflight(source,context.scene.nms_icon_settings.include_station,allow_simplify=False)
-                    else:icon_fit.read_outline(source,allow_simplify=False)
-                except icon_fit.SimplificationRequired as exc:
-                    if bpy.app.background:
-                        self.report({'WARNING'},str(exc));return {'CANCELLED'}
-                    # The confirmation owns the pending source. Neither Cancel
-                    # nor opening this dialog changes existing settings/objects.
-                    bpy.ops.nms_icon.simplify_import('INVOKE_DEFAULT',source=source,source_name=path.stem)
-                    return {'FINISHED'}
             result=import_source(context,source,path.stem,preflight=not self.simplify)
             self.report({'INFO'},'SVG simplified and imported.' if result['outline_recovered'] else 'SVG loaded. Adjust accuracy, then generate native panels.')
             return {'FINISHED'}
-        except Exception as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
+        except icon_fit.SimplificationRequired as exc:
+            self.report({'WARNING'},str(exc));return {'CANCELLED'}
+        except Exception as exc:report_error(self,{'ERROR'},str(exc));return {'CANCELLED'}
+
+class NMSICON_OT_rebuild_import(bpy.types.Operator):
+    bl_idname='nms_icon.rebuild_import';bl_label='Rebuild & Import';bl_options={'UNDO','INTERNAL'}
+    bl_description='Trace visible outlines and cutouts into a fresh SVG, preserving the original. Review the preview before generating'
+    source:StringProperty(options={'HIDDEN','SKIP_SAVE'})
+    source_name:StringProperty(options={'HIDDEN','SKIP_SAVE'})
+    strengthen:BoolProperty(name='Strengthen thin lines',default=False,
+                           description='Slightly thicken traced lines; this changes the artwork and narrows small gaps')
+    def invoke(self,context,event):
+        return context.window_manager.invoke_props_dialog(self,width=450,title='Rebuild SVG features?',confirm_text='Rebuild & Import',cancel_default=True)
+    def draw(self,context):
+        ui=self.layout
+        ui.label(text='Trace visible outlines and cutouts into a new SVG.')
+        ui.label(text='Small details may change. Review the preview.')
+        ui.label(text='The original SVG is preserved.')
+        if not context.scene.nms_icon_settings.match_colors:ui.prop(self,'strengthen')
+    def execute(self,context):
+        try:
+            import_source(context,self.source,self.source_name,rebuild=True,
+                          strengthen=self.strengthen and not context.scene.nms_icon_settings.match_colors)
+            self.report({'INFO'},'Rebuilding SVG features. Review the preview before generating.')
+            return {'FINISHED'}
+        except Exception as exc:report_error(self,{'ERROR'},str(exc));return {'CANCELLED'}
 
 class NMSICON_OT_generate(bpy.types.Operator):
     bl_idname='nms_icon.generate';bl_label='Generate New Icon';bl_options={'REGISTER','UNDO'}
@@ -339,7 +376,7 @@ class NMSICON_OT_generate(bpy.types.Operator):
             coverage=root['nms_icon_coverage']
             self.report({'WARNING'} if coverage<.9 else {'INFO'},f"Created {root['nms_text_part_count']} native panels; {coverage:.1%} filled"+('. Raise the part limit for missing areas.' if coverage<.9 else ''))
             return {'FINISHED'}
-        except Exception as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
+        except Exception as exc:report_error(self,{'ERROR'},str(exc));return {'CANCELLED'}
 
 class NMSICON_OT_load(bpy.types.Operator):
     bl_idname='nms_icon.edit';bl_label='Edit NMS Icon / Sticker';bl_options={'UNDO'}
@@ -353,7 +390,7 @@ class NMSICON_OT_load(bpy.types.Operator):
             if context.area and context.area.type=='VIEW_3D':context.area.spaces.active.show_region_ui=True
             self.report({'INFO'},'Icon settings loaded in NMS Text > Icon / Sticker. Preview changes apply with Update Selected Icon.')
             return {'FINISHED'}
-        except Exception as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
+        except Exception as exc:report_error(self,{'ERROR'},str(exc));return {'CANCELLED'}
 
 class NMSICON_OT_replace(bpy.types.Operator):
     bl_idname='nms_icon.replace';bl_label='Update Selected Icon';bl_options={'REGISTER','UNDO'}
@@ -365,7 +402,7 @@ class NMSICON_OT_replace(bpy.types.Operator):
             root=replace(context,selected(context),config(context.scene.nms_icon_settings))
             self.report({'INFO'},f"Updated icon: {root['nms_text_part_count']} panels")
             return {'FINISHED'}
-        except Exception as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
+        except Exception as exc:report_error(self,{'ERROR'},str(exc));return {'CANCELLED'}
 
 class NMSICON_OT_select(bpy.types.Operator):
     bl_idname='nms_icon.select';bl_label='Select Icon';bl_options={'UNDO'}
@@ -389,7 +426,7 @@ class NMSICON_OT_export(bpy.types.Operator,ExportHelper):
             payload=host().export_data(selected(context));Path(self.filepath).write_text(json.dumps(payload,indent=2),encoding='utf-8')
             self.report({'INFO'},f"Exported {len(payload['Objects'])} native parts")
             return {'FINISHED'}
-        except Exception as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
+        except Exception as exc:report_error(self,{'ERROR'},str(exc));return {'CANCELLED'}
 
 def family_items(self,context):return _families
 def palette_items(self,context):return _family_items.get(self.family,_palette_items[:1])
@@ -448,7 +485,7 @@ class NMSICON_OT_colors(bpy.types.Operator):
 
     def invoke(self,context,event):
         try:self.prepare(context.scene.nms_icon_settings)
-        except Exception as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
+        except Exception as exc:report_error(self,{'ERROR'},str(exc));return {'CANCELLED'}
         return context.window_manager.invoke_props_dialog(self,width=650,title='SVG Colours',confirm_text='Apply Colours')
 
     def draw(self,context):
@@ -465,7 +502,7 @@ class NMSICON_OT_colors(bpy.types.Operator):
             # Stage the fit before committing, so a failed choice leaves settings intact.
             if bpy.app.background:fitted(s.source,s.accuracy,s.max_parts,s.match_colors,self.include_station,data['color_overrides'])
             load(s,data);redraw();return {'FINISHED'}
-        except Exception as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
+        except Exception as exc:report_error(self,{'ERROR'},str(exc));return {'CANCELLED'}
 
 
 class NMSICON_OT_options(bpy.types.Operator):
@@ -492,6 +529,14 @@ class NMSICON_OT_details(bpy.types.Operator):
         if s.status:
             import textwrap
             for line in textwrap.wrap(s.status,54):ui.label(text=line)
+        if s.import_note:
+            import textwrap
+            for line in textwrap.wrap(s.import_note,54):ui.label(text=line)
+        failure=_import_errors.get(context.scene.name)
+        if failure:
+            import textwrap
+            ui.separator();ui.label(text='Import: '+failure[0]['source_name'])
+            for line in textwrap.wrap(failure[1],54):ui.label(text=line)
         ui.separator();ui.label(text='Generate creates panels at the 3D cursor.')
         ui.label(text='Update Selected Icon applies preview changes.')
     def execute(self,context):return {'FINISHED'}
@@ -505,6 +550,7 @@ def draw(ui,context):
     if root:ui.operator('nms_icon.replace',icon='FILE_REFRESH')
     curve_layout.draw(ui,context)
     if s.source:ui.label(text=s.source_name[:35],icon='FILE_IMAGE')
+    if s.import_note:ui.label(text='Rebuilt SVG · review preview',icon='INFO')
     result=_cache.get(key(s)) if s.source else None
     job=_jobs.active.get(context.scene.name)
     if context.scene.name in _imports:draw_busy(ui,job)
@@ -523,7 +569,25 @@ def draw(ui,context):
         # Drawing cannot write Scene properties; only queue a later refresh.
         request_preview(context.scene)
     if key(s) in _errors:
-        ui.label(text='SVG needs attention',icon='ERROR');ui.operator('nms_icon.details',icon='INFO')
+        box=ui.box();box.label(text='SVG needs attention',icon='ERROR')
+        import textwrap
+        for line in textwrap.wrap(s.status or 'Open Fit Details for the error.',34):box.label(text=line)
+        box.operator('nms_icon.details',icon='INFO')
+    failure=_import_errors.get(context.scene.name)
+    if failure:
+        data,message,can_simplify=failure
+        box=ui.box();box.label(text='SVG can be simplified' if can_simplify else 'SVG import failed',icon='INFO' if can_simplify else 'ERROR')
+        box.label(text=data['source_name'][:35])
+        import textwrap
+        for line in textwrap.wrap(message,34):box.label(text=line)
+        if can_simplify:
+            op=box.operator('nms_icon.simplify_import',icon='MOD_SIMPLIFY');op.source=data['source'];op.source_name=data['source_name']
+        else:
+            op=box.operator('nms_icon.rebuild_import',icon='FILE_REFRESH');op.source=data['source'];op.source_name=data['source_name']
+        box.operator('nms_icon.details',icon='INFO')
+    elif s.source:
+        op=ui.operator('nms_icon.rebuild_import',text='Rebuild SVG Features',icon='FILE_REFRESH')
+        op.source=s.original_source or s.source;op.source_name=s.source_name
     ui.prop(s,'accuracy',slider=True);ui.prop(s,'max_parts');ui.prop(s,'height')
     row=ui.row(align=True);row.prop(s,'match_colors',text='Match colours');row.operator('nms_icon.colors',text='Colours',icon='COLOR')
     ui.operator('nms_icon.options',icon='PREFERENCES')
@@ -536,7 +600,7 @@ def draw(ui,context):
 def menu(self,context):
     if selected(context):self.layout.operator('nms_icon.edit',icon='IMAGE_DATA')
 
-CLASSES=(NMSICON_Settings,NMSICON_ColorChoice,NMSICON_UL_colors,NMSICON_OT_colors,NMSICON_OT_options,NMSICON_OT_details,NMSICON_OT_simplify_import,NMSICON_OT_import,NMSICON_OT_generate,NMSICON_OT_load,NMSICON_OT_replace,NMSICON_OT_select,NMSICON_OT_export)
+CLASSES=(NMSICON_Settings,NMSICON_ColorChoice,NMSICON_UL_colors,NMSICON_OT_colors,NMSICON_OT_options,NMSICON_OT_details,NMSICON_OT_simplify_import,NMSICON_OT_rebuild_import,NMSICON_OT_import,NMSICON_OT_generate,NMSICON_OT_load,NMSICON_OT_replace,NMSICON_OT_select,NMSICON_OT_export)
 def register():
     global _icons,_palette_icons
     _icons=bpy.utils.previews.new()
@@ -560,7 +624,7 @@ def register():
 def unregister():
     global _icons,_palette_icons
     if bpy.app.timers.is_registered(refresh):bpy.app.timers.unregister(refresh)
-    _jobs.close();_imports.clear()
+    _jobs.close();_imports.clear();_import_errors.clear()
     _dirty.clear();_cache.clear();_errors.clear()
     icon_fit.read_outline.cache_clear()
     icon_fit.read_source.cache_clear()

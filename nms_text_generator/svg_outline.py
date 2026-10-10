@@ -103,3 +103,44 @@ def recover(shapes, size=2048):
         raise ValueError('SVG still has too many separate outline details after automatic cleanup. Try exporting a simpler silhouette.')
     return loops, {'outline_recovered': True, 'recovery_resolution': size,
                    'recovered_segments': sum(map(len, loops))}
+
+
+def rebuild_svg(source, with_colors=False, strengthen=False, size=2048):
+    """Trace the visible artwork into a new, self-contained SVG, offline.
+
+    This is a bounded recovery path for dense exporter geometry. It does not
+    invent missing content or execute external resources. Unsupported artwork
+    still gets the reader's actionable error. Colour mode traces the topmost
+    visible paint, so white cutouts do not become black silhouette fills.
+    """
+    from xml.etree.ElementTree import Element,SubElement,tostring
+    parsed=svg_geometry.read_svg(source,with_colors=with_colors,rebuild=True)
+    shapes,bounds=parsed[:2]
+    if with_colors:
+        paints=parsed[2];labels=np.full((size,size),-1,np.int32)
+        colors=list(dict.fromkeys(tuple(p) for p in paints))
+        if len(colors)>64:raise ValueError('Rebuilding supports up to 64 solid colours. Reduce colours or turn off Match colours.')
+        for shape,paint in zip(shapes,paints):
+            labels[svg_geometry.rasterize([shape],size)]=colors.index(tuple(paint))
+        masks=((labels==i,'#'+''.join(f'{round(c*255):02x}' for c in color)) for i,color in enumerate(colors))
+    else:masks=((svg_geometry.rasterize(shapes,size),'#020202'),)
+    root=Element('svg',xmlns='http://www.w3.org/2000/svg',viewBox=f'0 0 {size} {size}')
+    segments=0;regions=0
+    for mask,paint in masks:
+        if not mask.any():continue
+        if strengthen:
+            # Explicit opt-in: grow the visible ink by two recovery pixels.
+            # This helps traced hairlines without filling enclosed regions.
+            padded=np.pad(mask,2)
+            mask=np.logical_or.reduce([padded[2+y:2+y+size,2+x:2+x+size]
+                                       for y in range(-2,3) for x in range(-2,3) if x*x+y*y<=4])
+        loops=[simplify_loop(loop,.65/size) for loop in trace_mask(mask)]
+        segments+=sum(map(len,loops));regions+=len(loops)
+        if segments>12000:raise ValueError('Rebuilt SVG still has too many details. Reduce small marks in the original artwork.')
+        commands=['M'+' L'.join(f'{x*size:.4f},{y*size:.4f}' for x,y in loop)+' Z' for loop in loops]
+        SubElement(root,'path',{'fill':paint,'fill-rule':'nonzero','d':' '.join(commands)})
+    if not regions:raise ValueError('No visible SVG features could be traced.')
+    rebuilt=tostring(root,encoding='unicode')
+    if len(rebuilt.encode('utf-8'))>svg_geometry.MAX_BYTES:raise ValueError('Rebuilt SVG exceeds the import size limit.')
+    return rebuilt,{'rebuilt':True,'rebuild_resolution':size,'rebuild_segments':segments,
+                    'rebuild_regions':regions,'strengthened_lines':strengthen}

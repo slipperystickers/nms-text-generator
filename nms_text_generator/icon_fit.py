@@ -474,7 +474,17 @@ def close_gaps(boundary,panels,size,limit,tolerance,edge_count,follow_edges=Fals
 def fit_svg(source,accuracy=50,max_parts=300):
     accuracy=max(0,min(100,int(accuracy)));max_parts=max(1,min(2000,int(max_parts)))
     shapes,bounds,loops,cleanup=read_outline(source)
-    return fit_outline(shapes,bounds,loops,cleanup,accuracy,max_parts)
+    result=fit_outline(shapes,bounds,loops,cleanup,accuracy,max_parts)
+    # Relaxing the two sides of a traced hairline independently can displace
+    # the whole line. If that happens, fit within the recovered features and
+    # report missing coverage rather than inventing broad wedges outside them.
+    if result['excess']>.05 and result['coverage']<.8:
+        try:candidate=fit_outline(shapes,bounds,loops,cleanup,accuracy,max_parts,fill_first=True)
+        except ValueError:return result
+        if candidate['coverage']>result['coverage'] and candidate['excess']<result['excess']:
+            candidate['feature_fit']=True
+            return candidate
+    return result
 
 
 def fit_outline(shapes,bounds,loops,cleanup,accuracy=50,max_parts=300,fill_first=False,coverage_goal=None,outline_tolerance=None,optimize_fill=False):

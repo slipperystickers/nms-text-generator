@@ -514,3 +514,12 @@ Icon and text previews calculate in a separate local process. The pulsing bar is
 ### Rotate artwork around a circle
 
 Select the generated artwork and its closed curve. Expand **Curve Options**, set **Around curve** in degrees, and click **Follow Curve**. A 90 degree angle moves it one quarter of the way around; negative angles move the other way. Set 0 degrees to return to its original starting position. The letters stay aligned to the path. The angle is retained when you update or reopen the artwork. Open curves require an angle of 0.
+## SVG recovery and rebuilding
+
+If a traced SVG needs cleanup, choose **Simplify & Import**. NMScribe combines its strokes and traces a simpler outline while preserving the original file. Rounded strokes from online PNG-to-SVG converters are handled without expanding every curve point into a full circle.
+
+If normal import or fitting fails, NMScribe attempts a bounded local rebuild of the visible features. **Rebuild SVG Features** is also available after loading a file, and failed imports show **Rebuild & Import**. Rebuilding makes fresh paths from the visible outlines and cutouts. It preserves visible solid colour regions when **Match colours** is enabled. The original SVG remains saved in the icon settings as well as on disk.
+
+For thin monochrome traces, **Strengthen thin lines** slightly thickens the rebuilt artwork. This is optional and changes line weight and gap widths. Always inspect the preview before generating. Missing red areas indicate a fitting/part-budget limitation, even when the SVG imported successfully. A filled logo will usually fit with fewer parts than a hairline version.
+
+Rebuilding is approximate. It cannot recover embedded bitmap images, unresolved fonts, or unsupported styling, masks, and filters; export those as plain vector paths first. The sidebar gives the actual error, and a failed replacement leaves the previously accepted icon available.
