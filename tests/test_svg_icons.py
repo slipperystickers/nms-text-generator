@@ -310,5 +310,10 @@ class SvgTests(unittest.TestCase):
         self.assertEqual(result['remaining_edge_pockets'],0)
         self.assertEqual(result['remaining_interior_samples'],0)
         self.assertLess(result['shape_change'],.05)
+        lower=icon_fit.fit_svg(source,60,300)
+        self.assertTrue(lower.get('faceted_fit'))
+        self.assertLessEqual(lower['part_count'],result['part_count'])
+        self.assertLess(sum(map(len,lower['_fill_loops'])),sum(map(len,result['_fill_loops'])))
+        self.assertTrue(lower['seam_check_complete'])
 
 if __name__=='__main__':unittest.main()

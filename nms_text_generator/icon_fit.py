@@ -274,7 +274,7 @@ def prune_contained(panels,edge_count,later_only=False,kept_indices=None):
     return removed
 
 
-def exposed_face_points(panels,positions=(.5,)):
+def exposed_face_points(panels,positions=(.5,),removed_panel=None):
     """Probe every exposed native-face edge interval without a pixel grid.
 
     Clip each edge against neighbouring rectangles. The intervals left over
@@ -289,7 +289,12 @@ def exposed_face_points(panels,positions=(.5,)):
     quads=np.array([centres+su*u*half[:,0,None]+sv*v*half[:,1,None]
                     for su,sv in ((-1,-1),(1,-1),(1,1),(-1,1))]).transpose(1,0,2)
     lows=quads.min(1);highs=quads.max(1);points=[]
-    for i,quad in enumerate(quads):
+    indices=range(len(panels))
+    if removed_panel is not None:
+        rectangle=panel_corners(removed_panel)
+        indices=np.flatnonzero(np.all((lows<=rectangle.max(0)+1e-7)&(highs>=rectangle.min(0)-1e-7),axis=1))
+    for i in indices:
+        quad=quads[i]
         for p,q in zip(quad,np.roll(quad,-1,axis=0)):
             edge=q-p;length=float(np.linalg.norm(edge))
             if length<1e-9:continue
@@ -317,7 +322,10 @@ def exposed_face_points(panels,positions=(.5,)):
                 cursor=max(cursor,end)
             if cursor<1-1e-8:
                 points.extend(probe+edge*(cursor+(1-cursor)*fraction) for fraction in positions)
-    return np.asarray(points).reshape(-1,2)
+    points=np.asarray(points).reshape(-1,2)
+    if removed_panel is not None:
+        points=points[native_face_mask(removed_panel,points[:,0],points[:,1])]
+    return points
 
 
 def boundary_distances(boundary,points):
@@ -507,13 +515,13 @@ def facet_candidates(boundary):
     return panels
 
 
-def native_seam_probes(boundary,panels,rim_tolerance=.001):
+def native_seam_probes(boundary,panels,rim_tolerance=.001,removed_panel=None):
     """Find internal cracks separately from the small native outside rim.
 
     Several points on each exposed interval check its ends as well as its
     middle. Raster coverage alone misses arbitrarily thin native-face cracks.
     """
-    points=exposed_face_points(panels,positions=(.01,.25,.5,.75,.99))
+    points=exposed_face_points(panels,positions=(.01,.25,.5,.75,.99),removed_panel=removed_panel)
     points=points[contains(boundary.shapes,points)]
     if not len(points):return []
     distances,nearest=boundary_distances(boundary,points)
@@ -525,8 +533,8 @@ def native_seam_probes(boundary,panels,rim_tolerance=.001):
     return [(bool(blocked[i]),float(distances[i]),points[i],int(nearest[i])) for i in ids]
 
 
-def repair_facet_gaps(boundary,panels,limit,size=512,rim_tolerance=.001):
-    """Bridge seams while retaining one coherent polygon, never dilating it."""
+def facet_samples(boundary,size,rim_tolerance):
+    """Global interior probes plus locally scaled probes for tiny islands."""
     target=svg_geometry.rasterize(boundary.shapes,size)
     iy,ix=np.nonzero(target);points=np.column_stack(((ix+.5)/size,(iy+.5)/size))
     tolerances=np.full(len(points),rim_tolerance)
@@ -542,6 +550,20 @@ def repair_facet_gaps(boundary,panels,limit,size=512,rim_tolerance=.001):
         local=local[contains(boundary.shapes,local)]
         points=np.concatenate((points,local))
         tolerances=np.r_[tolerances,np.full(len(local),min(rim_tolerance,min(span)*.01))]
+    return points,tolerances,islands
+
+
+def island_owners(islands,panels):
+    owners=np.full(len(panels),-1)
+    centres=np.asarray([p[:2] for p in panels]).reshape(-1,2)
+    for i in sorted(range(len(islands)),key=lambda j:-abs(cross(islands[j],np.roll(islands[j],-1,axis=0)).sum())):
+        owners[contains([([islands[i]],'nonzero')],centres)]=i
+    return owners
+
+
+def repair_facet_gaps(boundary,panels,limit,size=512,rim_tolerance=.001):
+    """Bridge seams while retaining one coherent polygon, never dilating it."""
+    points,tolerances,islands=facet_samples(boundary,size,rim_tolerance)
     missing=np.ones(len(points),bool)
     for panel in panels:missing&=~native_face_mask(panel,points[:,0],points[:,1])
     points=points[missing];tolerances=tolerances[missing]
@@ -578,16 +600,41 @@ def repair_facet_gaps(boundary,panels,limit,size=512,rim_tolerance=.001):
         pending=native_seam_probes(boundary,panels,rim_tolerance)
     # Preserve each material component even if it was below both sampling
     # resolutions. Assign nested islands to their innermost positive contour.
-    owners=np.full(len(panels),-1)
-    centres=np.asarray([p[:2] for p in panels]).reshape(-1,2)
-    for i in sorted(range(len(islands)),key=lambda j:-abs(cross(islands[j],np.roll(islands[j],-1,axis=0)).sum())):
-        owners[contains([([islands[i]],'nonzero')],centres)]=i
+    owners=island_owners(islands,panels)
     missing_islands=len(set(range(len(islands)))-set(owners.tolist()))
     return {'seam_repairs':added,'remaining_seams':sum(row[0] for row in pending),
             'remaining_edge_pockets':sum(not row[0] for row in pending),
             'remaining_interior_samples':int(available.sum()),
             'remaining_islands':missing_islands,
             'seam_check_complete':not pending and not available.any() and not missing_islands}
+
+
+def prune_facet_panels(boundary,panels,size=768,rim_tolerance=.001):
+    """Drop surplus rim pieces from an already complete fit without opening seams.
+
+    Preserve all sampled interior coverage and every material island. A removal
+    can expose new edges only inside its old face; inspect those locally, then
+    verify the complete union once at the end. The outside allowance is the
+    same minute native rim used by repair, independent of the Accuracy slider.
+    """
+    points,tolerances,islands=facet_samples(boundary,size,rim_tolerance)
+    if len(points)*len(panels)>100_000_000:return 0
+    distances,_=boundary_distances(boundary,points);core=distances>tolerances
+    masks=np.array([native_face_mask(p,points[:,0],points[:,1]) for p in panels])
+    counts=masks.sum(axis=0);keep=np.ones(len(panels),bool)
+    if np.any((counts==0)&core):return 0
+    owners=island_owners(islands,panels)
+    for i in sorted(range(len(panels)),key=lambda i:(panels[i][2],-i)):
+        lost=masks[i]&(counts==1)
+        if np.any(lost&core) or (np.count_nonzero(counts)-lost.sum())<len(points)*.995:continue
+        if owners[i]>=0 and np.count_nonzero((owners==owners[i])&keep)<=1:continue
+        proposal=[p for j,p in enumerate(panels) if keep[j] and j!=i]
+        if native_seam_probes(boundary,proposal,rim_tolerance,removed_panel=panels[i]):continue
+        keep[i]=False;counts-=masks[i]
+    proposal=[p for i,p in enumerate(panels) if keep[i]]
+    if native_seam_probes(boundary,proposal,rim_tolerance):return 0
+    removed=len(panels)-len(proposal);panels[:]=proposal
+    return removed
 
 
 def valid_facets(original,facets):
@@ -622,6 +669,37 @@ def valid_facets(original,facets):
     return True
 
 
+@lru_cache(maxsize=4)
+def contour_plan(source,max_parts):
+    """A stable coarse-to-fine hierarchy, independent of slider movement.
+
+    Derive the budget's finest contour once. Lower accuracy can only remove
+    vertices from that contour; it cannot restart the budget retries at a
+    different tolerance and accidentally restore more detail.
+    """
+    _,_,loops,_=read_outline(source)
+    floor=.0006
+    for retry in range(7):
+        finest=[simplify_loop(loop,floor) for loop in loops]
+        boundary=Boundary(finest)
+        panels,_=outline_panels(boundary,floor,max_parts*2)
+        if len(panels)<=max_parts*.8:break
+        if retry<6:floor*=1.6
+    if sum(map(len,finest))>256 or not valid_facets(loops,finest):return None
+    levels=[None]*101;previous=finest;accepted=floor
+    for accuracy in range(100,-1,-1):
+        tolerance=floor*.15**((accuracy-100)/100)
+        proposed=[simplify_loop(loop,tolerance) for loop in loops]
+        # simplify_loop deliberately restores tiny islands rather than erase
+        # them. Retain their previous facets instead of restoring their detail.
+        proposed=[new if len(new)<=len(old) else old for new,old in zip(proposed,previous)]
+        valid=valid_facets(loops,proposed)
+        if valid:previous=proposed;accepted=tolerance
+        levels[accuracy]={'loops':previous,'tolerance':accepted,
+                          'relaxed':floor>.000600001,'limited':not valid}
+    return levels
+
+
 def facet_fit(shapes,bounds,loops,cleanup,accuracy,max_parts,baseline):
     """Share clean faceted edges, then spend the saved capacity on native joins.
 
@@ -645,7 +723,10 @@ def facet_fit(shapes,bounds,loops,cleanup,accuracy,max_parts,baseline):
     masks=np.array([panel_mask(p,x,y,inset=True) for p in candidates])
     remaining=np.ones(len(x),bool);native_remaining=remaining.copy()
     gains=masks.sum(axis=1);panels=[]
-    for _ in range(max_parts//2):
+    # Simpler polygons need fewer competing edge seeds. Keep capacity for
+    # useful joins instead of spending half the cap on redundant rim pieces.
+    seed_limit=min(max_parts//2,max(1,len(boundary.a)*7//6))
+    for _ in range(seed_limit):
         i=int(gains.argmax())
         if gains[i]<1:break
         panels.append(candidates[i]);new=masks[i]&remaining
@@ -656,8 +737,12 @@ def facet_fit(shapes,bounds,loops,cleanup,accuracy,max_parts,baseline):
         if native_remaining.sum()<=len(x)*.003:break
     del masks
     if not panels:return None
+    edge_count=len(panels)
     report('Closing joins inside the polygon')
     checks=repair_facet_gaps(boundary,panels,max_parts,size=768)
+    edge_panels=set(panels[:edge_count])
+    removed=prune_facet_panels(boundary,panels) if checks['seam_check_complete'] else 0
+    edge_count=sum(p in edge_panels for p in panels)
     qn=768;reference=svg_geometry.rasterize(shapes,qn)
     target=svg_geometry.rasterize(boundary.shapes,qn)
     yy,xx=np.mgrid[:qn,:qn];xx=(xx+.5)/qn;yy=(yy+.5)/qn
@@ -672,14 +757,14 @@ def facet_fit(shapes,bounds,loops,cleanup,accuracy,max_parts,baseline):
     preview=np.empty((preview_n,preview_n,4),np.float32);preview[:]=(.055,.065,.08,1)
     preview[preview_target]=(.55,.19,.19,1);preview[preview_face]=(.95,.69,.28,1)
     total=max(1,int(reference.sum()));target_total=max(1,int(target.sum()))
-    return {**cleanup,**checks,'panels':panels,'part_count':len(panels),
+    return {**cleanup,**checks,'panels':panels,'part_count':len(panels),'removed_parts':removed,
             'coverage':float((face&reference).sum()/total),
             'face_coverage':float((face&target).sum()/target_total),
             'target_coverage':float((footprint&target).sum()/target_total),
             'excess':float((footprint&~reference).sum()/total),
             'shape_change':float((target^reference).sum()/total),
             'quality_resolution':qn,'bounds':bounds,'resolution':preview_n,'preview':preview,
-            'outline_parts':0,'_fill_loops':[c.tolist() for c in boundary.loops],
+            'outline_parts':edge_count,'_fill_loops':[c.tolist() for c in boundary.loops],
             'outline_tolerance':baseline['outline_tolerance'],'outline_omissions':0,
             'outline_relaxed':baseline['outline_relaxed'],'unfilled':not checks['seam_check_complete'],
             'budget_hit':len(panels)>=max_parts and not checks['seam_check_complete'],
@@ -689,20 +774,18 @@ def facet_fit(shapes,bounds,loops,cleanup,accuracy,max_parts,baseline):
 def fit_svg(source,accuracy=50,max_parts=300):
     accuracy=max(0,min(100,int(accuracy)));max_parts=max(1,min(2000,int(max_parts)))
     shapes,bounds,loops,cleanup=read_outline(source)
-    result=fit_outline(shapes,bounds,loops,cleanup,accuracy,max_parts)
-    # Compare assemblies of the SAME simplified contour: reducing parts must
-    # not create independently protruding rectangles or deeper contour notches.
-    if (accuracy>=75 and result['part_count']>=max_parts and
-            60<=max_parts<=400 and not (result['excess']>.05 and result['coverage']<.8)):
+    levels=contour_plan(source,max_parts)
+    plan=levels[accuracy] if levels is not None else None
+    result=fit_outline(shapes,bounds,loops,cleanup,accuracy,max_parts,planned_contour=plan)
+    # Use the shared-edge assembler at every accuracy. Accuracy selects the
+    # polygon, not the algorithm; both assemblies use exactly that polygon.
+    if plan is not None:
         candidate=facet_fit(shapes,bounds,loops,cleanup,accuracy,max_parts,result)
-        if (candidate is not None and candidate['part_count']<=result['part_count']*.9
+        if (candidate is not None and candidate['part_count']<=max_parts
+                and (result['unfilled'] or candidate['part_count']<=result['part_count'])
                 and candidate['face_coverage']>=.995 and candidate['seam_check_complete']):
-            n=candidate['quality_resolution'];reference=svg_geometry.rasterize(shapes,n)
-            yy,xx=np.mgrid[:n,:n];xx=(xx+.5)/n;yy=(yy+.5)/n
-            face=np.zeros_like(reference)
-            for panel in result['panels']:face|=native_face_mask(panel,xx,yy)
-            baseline_coverage=float((face&reference).sum()/max(1,reference.sum()))
-            if candidate['coverage']>=baseline_coverage:return candidate
+            candidate['simplification_limited']=plan['limited']
+            return candidate
     # Relaxing the two sides of a traced hairline independently can displace
     # the whole line. If that happens, fit within the recovered features and
     # report missing coverage rather than inventing broad wedges outside them.
@@ -715,7 +798,7 @@ def fit_svg(source,accuracy=50,max_parts=300):
     return result
 
 
-def fit_outline(shapes,bounds,loops,cleanup,accuracy=50,max_parts=300,fill_first=False,coverage_goal=None,outline_tolerance=None,optimize_fill=False):
+def fit_outline(shapes,bounds,loops,cleanup,accuracy=50,max_parts=300,fill_first=False,coverage_goal=None,outline_tolerance=None,optimize_fill=False,planned_contour=None):
     """Fit a visible colour region in the artwork's shared coordinate space."""
     tolerance=.004*(.15**(accuracy/100)) if outline_tolerance is None else outline_tolerance
     if fill_first:
@@ -741,11 +824,16 @@ def fit_outline(shapes,bounds,loops,cleanup,accuracy=50,max_parts=300,fill_first
     # Keep budget available for filling. Relax an over-budget contour as a whole
     # instead of chopping random edges from the logo.
     relaxed=False
-    for retry in range(7):
-        boundary=Boundary([simplify_loop(loop,tolerance) for loop in loops])
+    if planned_contour is not None:
+        tolerance=planned_contour['tolerance'];relaxed=planned_contour['relaxed']
+        boundary=Boundary(planned_contour['loops'])
         panels,omitted=outline_panels(boundary,tolerance,max_parts*2)
-        if len(panels)<=max_parts*.8:break
-        if retry<6:tolerance*=1.6;relaxed=True
+    else:
+        for retry in range(7):
+            boundary=Boundary([simplify_loop(loop,tolerance) for loop in loops])
+            panels,omitted=outline_panels(boundary,tolerance,max_parts*2)
+            if len(panels)<=max_parts*.8:break
+            if retry<6:tolerance*=1.6;relaxed=True
     if len(panels)>max_parts:
         panels=sorted(panels,key=lambda p:p[2],reverse=True)[:max_parts];relaxed=True
     n=128+round(accuracy*1.28)

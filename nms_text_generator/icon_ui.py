@@ -258,7 +258,7 @@ def replace(context,root,data):
 class NMSICON_Settings(bpy.types.PropertyGroup):
     source: StringProperty(options={'HIDDEN'},update=changed)
     source_name: StringProperty(default='SVG icon')
-    accuracy: IntProperty(name='Accuracy',default=50,min=0,max=100,subtype='PERCENTAGE',update=changed,description='Detail setting, not filled coverage. Higher accuracy follows curves more closely; the part limit can leave areas missing. Preview only; press Generate or Update to apply')
+    accuracy: IntProperty(name='Accuracy',default=50,min=0,max=100,subtype='PERCENTAGE',update=changed,description='Contour detail: lower values simplify curves into fewer facets; higher values retain finer contours. Part limit is a maximum. Preview only; press Generate or Update to apply')
     max_parts: IntProperty(name='Part limit',default=300,min=1,max=2000,update=changed,description='Hard upper limit; excess detail is omitted, never silently creates more parts')
     height: FloatProperty(name='Icon height',default=5,min=.05,max=10000,unit='LENGTH')
     panel_type: EnumProperty(name='Panel type',items=panels.ITEMS,default=panels.NEW_DEFAULT)
@@ -524,9 +524,11 @@ class NMSICON_OT_details(bpy.types.Operator):
             ui.label(text=f"{result['part_count']:,} panels / limit {s.max_parts:,}")
             if result.get('faceted_fit'):
                 ui.label(text='Faceted outline: panels stay inside the contour')
+                ui.label(text=f"Contour segments: {sum(map(len,result['_fill_loops']))}")
                 ui.label(text=f"Fitted silhouette covered: {result['face_coverage']:.1%}")
                 ui.label(text=f"Shape change: {result['shape_change']:.1%} of SVG area")
                 ui.label(text='Native interior seams: none detected' if result['seam_check_complete'] else 'Native joins need more parts')
+                if result.get('simplification_limited'):ui.label(text='Further simplification would damage cutouts')
             else:
                 ui.label(text=f"Outline: {result['outline_parts']} / Fill: {result['part_count']-result['outline_parts']}")
                 ui.label(text=f"Sampled coverage: {result['coverage']:.1%}")

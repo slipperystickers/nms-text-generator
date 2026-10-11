@@ -22,7 +22,7 @@ addon.register()
 for obj in list(bpy.data.objects):bpy.data.objects.remove(obj,do_unlink=True)
 settings=bpy.context.scene.nms_icon_settings
 if '--flat' in sys.argv:settings.panel_type='BUILDFLATPANEL'
-settings.accuracy=100
+settings.accuracy=int(sys.argv[sys.argv.index('--accuracy')+1]) if '--accuracy' in sys.argv else 100
 settings.max_parts=300
 settings.height=10
 source=ROOT/'tests/fixtures/icon_heart_pirates.svg'
@@ -65,10 +65,11 @@ bpy.context.scene.render.resolution_percentage=100
 output=ROOT/'test_output/heart_pirates'
 output.mkdir(parents=True,exist_ok=True)
 name='faceted-native-flat' if '--flat' in sys.argv else 'faceted-native'
+if '--accuracy' in sys.argv:name+='-'+str(settings.accuracy)
 bpy.context.scene.render.filepath=str(output/(name+'.png'))
 bpy.ops.render.render(write_still=True)
 (output/(name+'.json')).write_text(json.dumps({
-    'parts':len(parts),'coverage':result['coverage'],
+    'parts':len(parts),'accuracy':settings.accuracy,'vertices':sum(map(len,result['_fill_loops'])),'coverage':result['coverage'],
     'face_coverage':result['face_coverage'],'excess':result['excess'],
     'shape_change':result['shape_change'],'remaining_seams':result['remaining_seams'],
     'remaining_edge_pockets':result['remaining_edge_pockets'],

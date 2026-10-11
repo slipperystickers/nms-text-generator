@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import types
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -32,6 +33,52 @@ def covered(panels, points):
 
 
 class FacetedFitTests(unittest.TestCase):
+    def test_complete_candidate_can_use_more_parts_than_an_unfilled_fit(self):
+        source='<svg xmlns="http://www.w3.org/2000/svg"><rect width="100" height="50"/></svg>'
+        baseline={'part_count':10,'unfilled':True,'budget_hit':True,'excess':0,'coverage':.8}
+        candidate={'part_count':12,'face_coverage':.999,'seam_check_complete':True}
+        cases=[(True,True,12,True,True),(False,True,12,True,False),
+               (False,False,10,True,True),(True,True,21,True,False),
+               (True,True,12,False,False)]
+        with patch.object(icon_fit,'contour_plan',return_value=[{'limited':False}]*101):
+            for unfilled,budget_hit,count,complete,accepted in cases:
+                with self.subTest(unfilled=unfilled,budget_hit=budget_hit,count=count,complete=complete):
+                    current={**baseline,'unfilled':unfilled,'budget_hit':budget_hit}
+                    proposed={**candidate,'part_count':count,'seam_check_complete':complete}
+                    with patch.object(icon_fit,'fit_outline',return_value=current), \
+                         patch.object(icon_fit,'facet_fit',return_value=proposed):
+                        result=icon_fit.fit_svg(source,60,20)
+                    self.assertIs(result,proposed if accepted else current)
+
+    def test_accuracy_only_removes_contour_detail_and_preserves_topology(self):
+        source=(Path(__file__).parent/'fixtures/icon_heart_pirates.svg').read_text()
+        plans=icon_fit.contour_plan(source,300)
+        self.assertIsNotNone(plans)
+        self.assertIs(plans,icon_fit.contour_plan(source,300))
+        original=icon_fit.read_outline(source)[2]
+        for accuracy in range(100):
+            coarser,finer=plans[accuracy],plans[accuracy+1]
+            self.assertGreaterEqual(coarser['tolerance'],finer['tolerance'])
+            self.assertTrue(all(len(a)<=len(b) for a,b in zip(coarser['loops'],finer['loops'])))
+            self.assertTrue(icon_fit.valid_facets(original,coarser['loops']))
+        self.assertLess(sum(map(len,plans[60]['loops'])),sum(map(len,plans[100]['loops'])))
+
+    def test_pruning_keeps_native_crack_bridge_and_small_island(self):
+        width=.1;half=width*icon_fit.RATIO/2
+        lower,upper=.4,.4+width*icon_fit.FACE_SHORT+2e-6
+        tiny=rectangle(.8,.5,.805,.501)
+        boundary=icon_fit.Boundary([rectangle(.5-half,lower-width/2,.5+half,upper+width/2),tiny])
+        panels=[(.5,lower,width,0),(.5,upper,width,0)]
+        check=icon_fit.repair_facet_gaps(boundary,panels,24,size=128)
+        self.assertTrue(check['seam_check_complete'])
+        panels.append(panels[0])  # A provably redundant copy can be removed.
+        self.assertGreater(icon_fit.prune_facet_panels(boundary,panels,size=128),0)
+        seam=lower+width*icon_fit.FACE_SHORT/2+1e-6
+        points=np.column_stack((np.linspace(.5-half+.002,.5+half-.002,83),np.full(83,seam)))
+        self.assertTrue(covered(panels,points).all())
+        self.assertTrue(covered(panels,[[.80001,.5005],[.8025,.5005],[.80499,.5005]]).all())
+        self.assertFalse(icon_fit.native_seam_probes(boundary,panels))
+
     def test_rotated_straight_band_uses_large_shared_faces(self):
         angle = math.radians(17)
         loop = transform(rectangle(.15, .45, .85, .55), angle)

@@ -1,3 +1,10 @@
+## 2.2.14 - Consistent contour accuracy and responsive previews
+
+- Apply the shared-edge assembler throughout the accuracy range, removing the 75% cutoff that sent lower settings back to the older fit.
+- Build a consistent contour hierarchy for supported faceted fits: lowering accuracy removes detail without restarting budget retries or restoring tiny shapes to their original complexity. Stop coarsening before cutouts or islands would be damaged. Complex or unsafe contours retain the existing fallback fitter.
+- Remove surplus rim panels after native seam repair, preserving interior coverage and separate features. The part limit remains a ceiling; packing can cause small count differences between contour levels.
+- Preserve debounced background previews and cancellation of stale jobs. Add regression checks for rapid slider edits, stale results, contour progression and native seam protection.
+
 ## 2.2.13 - Shared faceted contours and fewer SVG panels
 
 - Fit larger panels along one shared polygon contour when a high-accuracy single-colour SVG reaches its part limit. Opposite sides of straight bands share coverage instead of reserving separate outline fragments.
