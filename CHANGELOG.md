@@ -1,8 +1,8 @@
-## 2.2.13 - Fewer panels and better face coverage on traced SVGs
+## 2.2.13 - Shared faceted contours and fewer SVG panels
 
-- Try a compact panel fit when a high-accuracy single-colour SVG reaches its part limit. Larger, overlapping panels cover straight features without reserving most of the budget for outline fragments.
-- Count the usable native panel faces when choosing the result, and keep the existing contour fit unless the compact fit saves at least 10% of parts, improves face coverage, and stays within a small outline allowance.
-- Show estimated face coverage and outline allowance in Fit Details for compact results. The source SVG and intentional large cutouts remain unchanged.
+- Fit larger panels along one shared polygon contour when a high-accuracy single-colour SVG reaches its part limit. Opposite sides of straight bands share coverage instead of reserving separate outline fragments.
+- Keep every panel inside that contour. Check holes, disconnected features, native-face cracks and missing interior pockets before accepting a fit that saves at least 10% of parts.
+- Show coverage of the fitted silhouette separately from the amount of shape simplification. The supplied Heart Pirates example uses 220 panels instead of 300, with 99.8% sampled native-face coverage of its faceted silhouette.
 
 ## 2.2.8 - Highlighted Generate and reliable circles
 

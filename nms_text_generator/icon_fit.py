@@ -274,7 +274,7 @@ def prune_contained(panels,edge_count,later_only=False,kept_indices=None):
     return removed
 
 
-def exposed_face_points(panels):
+def exposed_face_points(panels,positions=(.5,)):
     """Probe every exposed native-face edge interval without a pixel grid.
 
     Clip each edge against neighbouring rectangles. The intervals left over
@@ -312,9 +312,11 @@ def exposed_face_points(panels):
                 possible&=moving|(abs(origin[:,axis])<=half[ids,axis]+1e-12)
             cursor=0.
             for start,end in sorted(zip(lo[possible&(hi>lo)],hi[possible&(hi>lo)])):
-                if start>cursor+1e-8:points.append(probe+edge*(cursor+start)/2)
+                if start>cursor+1e-8:
+                    points.extend(probe+edge*(cursor+(start-cursor)*fraction) for fraction in positions)
                 cursor=max(cursor,end)
-            if cursor<1-1e-8:points.append(probe+edge*(cursor+1)/2)
+            if cursor<1-1e-8:
+                points.extend(probe+edge*(cursor+(1-cursor)*fraction) for fraction in positions)
     return np.asarray(points).reshape(-1,2)
 
 
@@ -471,115 +473,236 @@ def close_gaps(boundary,panels,size,limit,tolerance,edge_count,follow_edges=Fals
     return bool(available.any())
 
 
-def compact_fill(shapes,bounds,loops,cleanup,accuracy,max_parts):
-    """Use larger, overlapping faces where a one-pixel outline allowance permits.
+def native_face_mask(panel,xx,yy):
+    """Calibrated Storage face, used to distinguish actual cracks from bevels."""
+    x,y,w,angle=panel;c,s=math.cos(angle),math.sin(angle);dx=xx-x;dy=yy-y
+    return ((abs(c*dx+s*dy)<=w*RATIO/2+1e-10)&
+            (abs(-s*dx+c*dy)<=w*FACE_SHORT/2+1e-10))
 
-    The original contour fit is still the default. This alternate fit uses a
-    one-cell dilation only to nominate close-fitting rectangles, then counts
-    coverage on the inset panel faces so native bevels cannot masquerade as
-    filled area. It never crosses a hole wider than the small allowance.
+
+def facet_candidates(boundary):
+    """Maximal rectangles anchored to whole vector edges, in either orientation.
+
+    Both sides of a straight band compete for the same covered area. They no
+    longer reserve separate small outline pieces. No candidate can cross the
+    shared polygon contour, including its holes and neighbouring islands.
     """
-    n=256+round(accuracy*1.28)
-    target=svg_geometry.rasterize(shapes,n)
-    allowed=target.copy()
-    padded=np.pad(target,1)
-    for dy in (-1,0,1):
-        for dx in (-1,0,1):
-            allowed|=padded[1+dy:n+1+dy,1+dx:n+1+dx]
-    yy,xx=np.mgrid[:n,:n];xx=(xx+.5)/n;yy=(yy+.5)/n
-    m=math.ceil(n*math.sqrt(2))+4;gy,gx=np.mgrid[:m,:m]
-    gx=(gx+.5-m/2)/n;gy=(gy+.5-m/2)/n
-    rotations=[]
-    for angle in (0,math.pi/8,math.pi/4,3*math.pi/8,math.pi/2,
-                  5*math.pi/8,3*math.pi/4,7*math.pi/8):
-        c,s=math.cos(angle),math.sin(angle)
-        ix=np.floor((c*gx-s*gy+.5)*n).astype(int)
-        iy=np.floor((s*gx+c*gy+.5)*n).astype(int)
-        inside=(ix>=0)&(ix<n)&(iy>=0)&(iy<n)
-        ix=np.clip(ix,0,n-1);iy=np.clip(iy,0,n-1)
-        integral_allowed=integral((inside&allowed[iy,ix]).astype(np.int32))
-        options=[]
-        for h in (2,3,4,6,8,11,15,21,29,40,56):
-            w=math.ceil(h*RATIO)
-            if w>m:continue
-            valid=sums(integral_allowed,h,w)==h*w
-            if valid.any():options.append((h,w,valid))
-        rotations.append((angle,ix,iy,inside,options))
-    panels=[];remaining=target.copy()
-    goal=.99
-    while len(panels)<max_parts and remaining.sum()>target.sum()*(1-goal):
-        best=None;score=0
-        for angle,ix,iy,inside,options in rotations:
-            ii=integral((inside&remaining[iy,ix]).astype(np.int32))
-            for h,w,valid in options:
-                gain=np.where(valid,sums(ii,h,w),0)
-                idx=int(gain.argmax());value=int(gain.flat[idx])
-                if value>score:
-                    row,col=np.unravel_index(idx,gain.shape)
-                    best=(angle,h,w,row,col,valid);score=value
-        if best is None or score<1:break
-        angle,h,w,row,col,valid=best;valid[row,col]=False
-        c,s=math.cos(angle),math.sin(angle)
-        lx=(col+w/2-m/2)/n;ly=(row+h/2-m/2)/n
-        panel=(c*lx-s*ly+.5,s*lx+c*ly+.5,h/n,angle)
-        area=panel_mask(panel,xx,yy)
-        if np.any(area&~allowed):continue
-        face=panel_mask(panel,xx,yy,inset=True)
-        if not np.any(face&remaining):continue
-        panels.append(panel);remaining&=~face
+    panels=[]
+    for p,q in zip(boundary.a,boundary.b):
+        delta=q-p;length=float(np.linalg.norm(delta))
+        if length<1e-9:continue
+        u=delta/length;normal=np.array([-u[1],u[0]])
+        for fraction in (.15,.35,.5,.65,.85):
+            anchor=p+delta*fraction
+            for deep in (False,True):
+                angle=math.atan2(u[1],u[0])+(math.pi/2 if deep else 0)
+                factor=RATIO if deep else 1
+                def candidate(width):return (* (anchor+normal*width*factor/2),width,angle)
+                lo=0.;hi=1.
+                for _ in range(21):
+                    width=(lo+hi)/2
+                    if boundary.inside(candidate(width)):lo=width
+                    else:hi=width
+                if lo>1e-5:panels.append(candidate(lo))
+    return panels
+
+
+def native_seam_probes(boundary,panels,rim_tolerance=.001):
+    """Find internal cracks separately from the small native outside rim.
+
+    Several points on each exposed interval check its ends as well as its
+    middle. Raster coverage alone misses arbitrarily thin native-face cracks.
+    """
+    points=exposed_face_points(panels,positions=(.01,.25,.5,.75,.99))
+    points=points[contains(boundary.shapes,points)]
+    if not len(points):return []
+    distances,nearest=boundary_distances(boundary,points)
+    a=boundary.a[nearest];d=boundary.b[nearest]-a
+    t=np.clip(np.sum((points-a)*d,axis=1)/np.maximum(np.sum(d*d,axis=1),1e-24),0,1)
+    blocked=face_segments_blocked(panels,points,a+d*t[:,None])
+    ids=np.flatnonzero((distances>1e-7)&(blocked|(distances>rim_tolerance)))
+    ids=sorted(ids,key=lambda i:(-int(blocked[i]),-distances[i]))
+    return [(bool(blocked[i]),float(distances[i]),points[i],int(nearest[i])) for i in ids]
+
+
+def repair_facet_gaps(boundary,panels,limit,size=512,rim_tolerance=.001):
+    """Bridge seams while retaining one coherent polygon, never dilating it."""
+    target=svg_geometry.rasterize(boundary.shapes,size)
+    iy,ix=np.nonzero(target);points=np.column_stack(((ix+.5)/size,(iy+.5)/size))
+    tolerances=np.full(len(points),rim_tolerance)
+    islands=[loop for loop in boundary.loops if cross(loop,np.roll(loop,-1,axis=0)).sum()>0]
+    # A tiny detached feature may fall between global pixels, and its whole
+    # width may be smaller than the usual outer-rim allowance. Sample such
+    # features in their own bounds and scale the allowance to the feature.
+    for loop in islands:
+        low=loop.min(0);span=loop.max(0)-low
+        if min(span)>=rim_tolerance*20:continue
+        sy,sx=np.mgrid[:32,:32]
+        local=low+np.column_stack(((sx.ravel()+.5)/32,(sy.ravel()+.5)/32))*span
+        local=local[contains(boundary.shapes,local)]
+        points=np.concatenate((points,local))
+        tolerances=np.r_[tolerances,np.full(len(local),min(rim_tolerance,min(span)*.01))]
+    missing=np.ones(len(points),bool)
+    for panel in panels:missing&=~native_face_mask(panel,points[:,0],points[:,1])
+    points=points[missing];tolerances=tolerances[missing]
+    distances,nearest=boundary_distances(boundary,points)
+    available=distances>tolerances
+    added=0
+    pending=native_seam_probes(boundary,panels,rim_tolerance)
+    while len(panels)<limit:
+        choices=pending[:6]
+        # An untouched island/interior has no existing face edge to probe.
+        # Independently search the entire target so it cannot go unnoticed.
+        if available.any():
+            i=int(np.argmax(np.where(available,distances,-1)))
+            choices=[(True,float(distances[i]),points[i],int(nearest[i]))]+choices
+        if not choices:break
+        best=None
+        for _,distance,point,edge_index in choices:
+            d=boundary.b[edge_index]-boundary.a[edge_index]
+            tangent=math.atan2(d[1],d[0]);patch=None
+            for angle in (tangent,tangent+math.pi/2,0,math.pi/4,math.pi/2,3*math.pi/4):
+                lo=0.;hi=distance*2
+                for _ in range(18):
+                    width=(lo+hi)/2
+                    if boundary.inside((*point,width,angle)):lo=width
+                    else:hi=width
+                if patch is None or lo>patch[2]:patch=(*point,lo,angle)
+            if patch[2]<1e-8:continue
+            expanded=[patch];enlarge_fill(boundary,expanded,0);patch=expanded[0]
+            if not native_face_mask(patch,point[0],point[1]):continue
+            best=patch;break
+        if best is None:break
+        panels.append(best);added+=1
+        available&=~native_face_mask(best,points[:,0],points[:,1])
+        pending=native_seam_probes(boundary,panels,rim_tolerance)
+    # Preserve each material component even if it was below both sampling
+    # resolutions. Assign nested islands to their innermost positive contour.
+    owners=np.full(len(panels),-1)
+    centres=np.asarray([p[:2] for p in panels]).reshape(-1,2)
+    for i in sorted(range(len(islands)),key=lambda j:-abs(cross(islands[j],np.roll(islands[j],-1,axis=0)).sum())):
+        owners[contains([([islands[i]],'nonzero')],centres)]=i
+    missing_islands=len(set(range(len(islands)))-set(owners.tolist()))
+    return {'seam_repairs':added,'remaining_seams':sum(row[0] for row in pending),
+            'remaining_edge_pockets':sum(not row[0] for row in pending),
+            'remaining_interior_samples':int(available.sum()),
+            'remaining_islands':missing_islands,
+            'seam_check_complete':not pending and not available.any() and not missing_islands}
+
+
+def valid_facets(original,facets):
+    """Do not trade holes, disconnected features or simple loops for fewer edges."""
+    if len(original)!=len(facets):return False
+    for before,after in zip(original,facets):
+        a=cross(before,np.roll(before,-1,axis=0)).sum()
+        b=cross(after,np.roll(after,-1,axis=0)).sum()
+        if a*b<=0:return False
+    boundary=Boundary(facets);a=boundary.a;b=boundary.b;d=b-a
+    owner=np.concatenate([np.full(len(loop),i) for i,loop in enumerate(facets)])
+    offsets=np.cumsum([0]+[len(loop) for loop in facets])
+    for i,(p,q) in enumerate(zip(a,b)):
+        ids=np.arange(i+1,len(a))
+        adjacent=(owner[ids]==owner[i])&((ids==i+1)|((i==offsets[owner[i]])&(ids==offsets[owner[i]+1]-1)))
+        ids=ids[~adjacent]
+        if not len(ids):continue
+        overlap=np.all((boundary.low[ids]<=boundary.high[i]+1e-10)&(boundary.high[ids]>=boundary.low[i]-1e-10),axis=1)
+        ids=ids[overlap];delta=a[ids]-p;den=cross(d[i],d[ids])
+        parallel=abs(den)<1e-12
+        if np.any(parallel&(abs(cross(delta,d[i]))<1e-12)):return False
+        ids=ids[~parallel];delta=delta[~parallel];den=den[~parallel]
+        t=cross(delta,d[ids])/den;u=cross(delta,d[i])/den
+        if np.any((t>=-1e-9)&(t<=1+1e-9)&(u>=-1e-9)&(u<=1+1e-9)):return False
+    # RDP keeps each loop's first vertex. Its nesting relative to every other
+    # loop must remain unchanged (a tiny whole island/hole could be swallowed
+    # without a final contour intersection).
+    for i,(before,after) in enumerate(zip(original,facets)):
+        anchors=[loop[0] for j,loop in enumerate(original) if j!=i]
+        if anchors and not np.array_equal(contains([([before],'nonzero')],anchors),
+                                          contains([([after],'nonzero')],anchors)):return False
+    return True
+
+
+def facet_fit(shapes,bounds,loops,cleanup,accuracy,max_parts,baseline):
+    """Share clean faceted edges, then spend the saved capacity on native joins.
+
+    The complete simplified contour is selected before assembling panels. A
+    geometric containment check forbids per-panel overdraw. The alternative
+    is accepted by the caller only when both its shape and seam checks pass.
+    """
+    from .preview_jobs import report
+    boundary=Boundary([np.asarray(c) for c in baseline['_fill_loops']])
+    # Bound candidate memory and work for complex artwork; the normal contour
+    # fitter remains available when this alternate search is unsuitable.
+    if len(boundary.a)>256 or not valid_facets(loops,boundary.loops):return None
+    report('Fitting shared polygon edges')
+    candidates=facet_candidates(boundary)
+    if not candidates:return None
+    n=512;target=svg_geometry.rasterize(boundary.shapes,n)
+    iy,ix=np.nonzero(target);x=(ix+.5)/n;y=(iy+.5)/n
+    # Keep dense solid shapes from allocating an unbounded candidate matrix.
+    stride=max(1,math.ceil(len(x)*len(candidates)/100_000_000))
+    x=x[::stride];y=y[::stride]
+    masks=np.array([panel_mask(p,x,y,inset=True) for p in candidates])
+    remaining=np.ones(len(x),bool);native_remaining=remaining.copy()
+    gains=masks.sum(axis=1);panels=[]
+    for _ in range(max_parts//2):
+        i=int(gains.argmax())
+        if gains[i]<1:break
+        panels.append(candidates[i]);new=masks[i]&remaining
+        # Update only newly covered samples, rather than rescanning every
+        # candidate's whole mask after every selection.
+        gains-=masks[:,new].sum(axis=1);remaining&=~new
+        native_remaining&=~native_face_mask(candidates[i],x,y)
+        if native_remaining.sum()<=len(x)*.003:break
+    del masks
     if not panels:return None
-    footprint=np.zeros_like(target)
-    for panel in panels:footprint|=panel_mask(panel,xx,yy)
-    preview=np.empty((n,n,4),np.float32);preview[:]=(.055,.065,.08,1)
-    preview[target]=(.55,.19,.19,1);preview[footprint]=(.95,.69,.28,1)
-    total=max(1,int(target.sum()))
-    quality_n=n*2
-    quality_target=svg_geometry.rasterize(shapes,quality_n)
-    qy,qx=np.mgrid[:quality_n,:quality_n]
-    qx=(qx+.5)/quality_n;qy=(qy+.5)/quality_n
-    quality_face=np.zeros_like(quality_target)
-    quality_footprint=np.zeros_like(quality_target)
+    report('Closing joins inside the polygon')
+    checks=repair_facet_gaps(boundary,panels,max_parts,size=768)
+    qn=768;reference=svg_geometry.rasterize(shapes,qn)
+    target=svg_geometry.rasterize(boundary.shapes,qn)
+    yy,xx=np.mgrid[:qn,:qn];xx=(xx+.5)/qn;yy=(yy+.5)/qn
+    face=np.zeros_like(target);footprint=np.zeros_like(target)
     for panel in panels:
-        quality_face|=panel_mask(panel,qx,qy,inset=True)
-        quality_footprint|=panel_mask(panel,qx,qy)
-    quality_total=max(1,int(quality_target.sum()))
-    return {**cleanup,'panels':panels,'part_count':len(panels),
-            'coverage':float((footprint&target).sum()/total),
-            'face_coverage':float((quality_face&quality_target).sum()/quality_total),
-            'excess':float((quality_footprint&~quality_target).sum()/quality_total),
-            'quality_resolution':quality_n,
-            'bounds':bounds,'resolution':n,'preview':preview,'outline_parts':0,
-            '_fill_loops':[c.tolist() for c in loops],
-            'outline_tolerance':0,'outline_omissions':0,
-            'outline_relaxed':False,'unfilled':bool(remaining.any()),
-            'budget_hit':len(panels)>=max_parts and bool(remaining.any()),
-            'compact_fit':True}
+        face|=native_face_mask(panel,xx,yy);footprint|=panel_mask(panel,xx,yy)
+    preview_n=128+round(accuracy*1.28)
+    preview_target=svg_geometry.rasterize(shapes,preview_n)
+    py,px=np.mgrid[:preview_n,:preview_n];px=(px+.5)/preview_n;py=(py+.5)/preview_n
+    preview_face=np.zeros_like(preview_target)
+    for panel in panels:preview_face|=native_face_mask(panel,px,py)
+    preview=np.empty((preview_n,preview_n,4),np.float32);preview[:]=(.055,.065,.08,1)
+    preview[preview_target]=(.55,.19,.19,1);preview[preview_face]=(.95,.69,.28,1)
+    total=max(1,int(reference.sum()));target_total=max(1,int(target.sum()))
+    return {**cleanup,**checks,'panels':panels,'part_count':len(panels),
+            'coverage':float((face&reference).sum()/total),
+            'face_coverage':float((face&target).sum()/target_total),
+            'target_coverage':float((footprint&target).sum()/target_total),
+            'excess':float((footprint&~reference).sum()/total),
+            'shape_change':float((target^reference).sum()/total),
+            'quality_resolution':qn,'bounds':bounds,'resolution':preview_n,'preview':preview,
+            'outline_parts':0,'_fill_loops':[c.tolist() for c in boundary.loops],
+            'outline_tolerance':baseline['outline_tolerance'],'outline_omissions':0,
+            'outline_relaxed':baseline['outline_relaxed'],'unfilled':not checks['seam_check_complete'],
+            'budget_hit':len(panels)>=max_parts and not checks['seam_check_complete'],
+            'faceted_fit':True}
 
 
 def fit_svg(source,accuracy=50,max_parts=300):
     accuracy=max(0,min(100,int(accuracy)));max_parts=max(1,min(2000,int(max_parts)))
     shapes,bounds,loops,cleanup=read_outline(source)
     result=fit_outline(shapes,bounds,loops,cleanup,accuracy,max_parts)
-    # A saturated high-detail contour fit can spend most of its budget on
-    # straight rims, leaving visible bevel gaps. Try the compact alternative
-    # only then, and keep the original unless it is clearly better on both
-    # native-face coverage and part count with a tightly bounded overdraw.
+    # Compare assemblies of the SAME simplified contour: reducing parts must
+    # not create independently protruding rectangles or deeper contour notches.
     if (accuracy>=75 and result['part_count']>=max_parts and
             60<=max_parts<=400 and not (result['excess']>.05 and result['coverage']<.8)):
-        compact=compact_fill(shapes,bounds,loops,cleanup,accuracy,max_parts)
-        if compact is not None and compact['part_count']<=result['part_count']*.9:
-            n=compact['quality_resolution'];target=svg_geometry.rasterize(shapes,n)
+        candidate=facet_fit(shapes,bounds,loops,cleanup,accuracy,max_parts,result)
+        if (candidate is not None and candidate['part_count']<=result['part_count']*.9
+                and candidate['face_coverage']>=.995 and candidate['seam_check_complete']):
+            n=candidate['quality_resolution'];reference=svg_geometry.rasterize(shapes,n)
             yy,xx=np.mgrid[:n,:n];xx=(xx+.5)/n;yy=(yy+.5)/n
-            baseline_face=np.zeros_like(target)
-            baseline_footprint=np.zeros_like(target)
-            for panel in result['panels']:
-                baseline_face|=panel_mask(panel,xx,yy,inset=True)
-                baseline_footprint|=panel_mask(panel,xx,yy)
-            face_coverage=float((baseline_face&target).sum()/max(1,target.sum()))
-            baseline_excess=float((baseline_footprint&~target).sum()/max(1,target.sum()))
-            if (compact['face_coverage']>=face_coverage+.01 and
-                    compact['excess']<=min(.05,baseline_excess+.025)):
-                return compact
+            face=np.zeros_like(reference)
+            for panel in result['panels']:face|=native_face_mask(panel,xx,yy)
+            baseline_coverage=float((face&reference).sum()/max(1,reference.sum()))
+            if candidate['coverage']>=baseline_coverage:return candidate
     # Relaxing the two sides of a traced hairline independently can displace
     # the whole line. If that happens, fit within the recovered features and
     # report missing coverage rather than inventing broad wedges outside them.

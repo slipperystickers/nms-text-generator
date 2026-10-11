@@ -1,4 +1,4 @@
-"""Factory-startup Blender smoke and render for the compact Heart Pirates fit."""
+"""Factory-startup Blender smoke and render for the faceted Heart Pirates fit."""
 import json
 import os
 import sys
@@ -21,23 +21,25 @@ if '--installed' in sys.argv:
 addon.register()
 for obj in list(bpy.data.objects):bpy.data.objects.remove(obj,do_unlink=True)
 settings=bpy.context.scene.nms_icon_settings
+if '--flat' in sys.argv:settings.panel_type='BUILDFLATPANEL'
 settings.accuracy=100
 settings.max_parts=300
 settings.height=10
 source=ROOT/'tests/fixtures/icon_heart_pirates.svg'
 assert bpy.ops.nms_icon.import_svg('EXEC_DEFAULT',filepath=str(source),simplify=True)=={'FINISHED'}
 result=icon_ui.analyze(settings)
-assert result['compact_fit'] and result['part_count']<=230
+assert result['faceted_fit'] and result['part_count']<=240
+assert result['seam_check_complete'] and result['face_coverage']>=.995
 root=icon_ui.create(bpy.context,icon_ui.config(settings),Matrix.Identity(4))
 parts=addon.managed_parts(root)
 assert len(parts)==result['part_count']
 for part in parts:
-    assert part.get('ObjectID')=='STORAGEPANEL'
+    assert part.get('ObjectID')==settings.panel_type
     addon.check_matrix(part.matrix_world)
     part.color=(.95,.69,.28,1)
 exported=addon.export_data(root)
 assert len(exported['Objects'])==len(parts)
-assert all(o['ObjectID']=='^STORAGEPANEL' for o in exported['Objects'])
+assert all(o['ObjectID']=='^'+settings.panel_type for o in exported['Objects'])
 
 bpy.ops.mesh.primitive_cube_add(size=1,location=(0,0,-10))
 back=bpy.context.object
@@ -62,9 +64,13 @@ bpy.context.scene.render.resolution_y=1200
 bpy.context.scene.render.resolution_percentage=100
 output=ROOT/'test_output/heart_pirates'
 output.mkdir(parents=True,exist_ok=True)
-bpy.context.scene.render.filepath=str(output/'compact-native.png')
+name='faceted-native-flat' if '--flat' in sys.argv else 'faceted-native'
+bpy.context.scene.render.filepath=str(output/(name+'.png'))
 bpy.ops.render.render(write_still=True)
-(output/'compact-native.json').write_text(json.dumps({
+(output/(name+'.json')).write_text(json.dumps({
     'parts':len(parts),'coverage':result['coverage'],
-    'face_coverage':result['face_coverage'],'excess':result['excess']},indent=2))
-print('NATIVE_COMPACT_FIT_AND_EXPORT_PASSED',len(parts),flush=True)
+    'face_coverage':result['face_coverage'],'excess':result['excess'],
+    'shape_change':result['shape_change'],'remaining_seams':result['remaining_seams'],
+    'remaining_edge_pockets':result['remaining_edge_pockets'],
+    'remaining_interior_samples':result['remaining_interior_samples']},indent=2))
+print('NATIVE_FACETED_FIT_AND_EXPORT_PASSED',len(parts),flush=True)
