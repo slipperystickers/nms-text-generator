@@ -11,7 +11,7 @@ enable_dependencies()
 import nms_text_generator as addon
 from nms_text_generator import icon_ui
 addon.register()
-assert addon.bl_info['version']==(2,2,14)
+assert addon.bl_info['version']==(2,2,15)
 scene=bpy.context.scene
 for obj in list(bpy.data.objects):bpy.data.objects.remove(obj,do_unlink=True)
 out=ROOT/'test_output/heart_pirates';out.mkdir(parents=True,exist_ok=True)

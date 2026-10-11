@@ -2,7 +2,7 @@ from .furby_errors import report_error
 bl_info = {
     'name': 'NMScribe for Blender Base Builder',
     'author': 'FuriousFurby',
-    'version': (2, 2, 14),
+    'version': (2, 2, 15),
     'blender': (5, 1, 0),
     'location': '3D View > Sidebar > NMS Text',
     'description': 'Native-panel text and SVG icons through NMS Base Builder; separate NMS Text tab',
@@ -819,7 +819,7 @@ class NMSTEXT_PT_panel(bpy.types.Panel):
         donation.label(text='Corvette Class Builders (CCB)')
         brand.operator('wm.url_open',text='CCB / Traveller Toolkit',icon='URL').url='https://discord.gg/arbW3DvM5y'
         ui.prop(settings,'mode',expand=True)
-        ui.label(text='Native panel lettering - v2.2.14')
+        ui.label(text='Native panel lettering - v2.2.15')
         if settings.mode=='ICON':
             icon_ui.draw(ui,context)
             return
@@ -876,7 +876,7 @@ def cancel_preview_jobs_on_load(_):
 
 def register():
     from . import release_updates
-    release_updates.register('nmscribe', '2.2.14', 'NMS Text')
+    release_updates.register('nmscribe', '2.2.15', 'NMS Text')
     load_previews()
     for cls in CLASSES:
         bpy.utils.register_class(cls)

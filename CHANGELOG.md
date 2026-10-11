@@ -1,3 +1,10 @@
+## 2.2.15 - Simplify bands and corners for useful panel savings
+
+- At reduced accuracy, align nearby band edges and simplify nearly square outside corners together before fitting panels. This reduces wedge fillers instead of spending the contour savings on extra join repairs.
+- Protect existing rectangular details, narrow features, holes and separate islands. Bound changes to the complete contour; keep native panel containment and seam checks unchanged. Full accuracy retains the previous contour.
+- The supplied Heart Pirates example now uses 147 panels at 60% versus 187 at 100%, with 99.8% sampled coverage of the simplified silhouette. Outer cap angles change deliberately; lower accuracy does not preserve the exact source outline.
+- Keep delayed background preview updates and stale-job cancellation unchanged.
+
 ## 2.2.14 - Consistent contour accuracy and responsive previews
 
 - Apply the shared-edge assembler throughout the accuracy range, removing the 75% cutoff that sent lower settings back to the older fit.

@@ -40,7 +40,9 @@ class FacetedFitTests(unittest.TestCase):
         cases=[(True,True,12,True,True),(False,True,12,True,False),
                (False,False,10,True,True),(True,True,21,True,False),
                (True,True,12,False,False)]
-        with patch.object(icon_fit,'contour_plan',return_value=[{'limited':False}]*101):
+        plan={'limited':False,'loops':icon_fit.read_outline(source)[2],
+              'tolerance':.0006,'relaxed':False}
+        with patch.object(icon_fit,'contour_plan',return_value=[plan]*101):
             for unfilled,budget_hit,count,complete,accepted in cases:
                 with self.subTest(unfilled=unfilled,budget_hit=budget_hit,count=count,complete=complete):
                     current={**baseline,'unfilled':unfilled,'budget_hit':budget_hit}

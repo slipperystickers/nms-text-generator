@@ -659,14 +659,130 @@ def valid_facets(original,facets):
         ids=ids[~parallel];delta=delta[~parallel];den=den[~parallel]
         t=cross(delta,d[ids])/den;u=cross(delta,d[i])/den
         if np.any((t>=-1e-9)&(t<=1+1e-9)&(u>=-1e-9)&(u<=1+1e-9)):return False
-    # RDP keeps each loop's first vertex. Its nesting relative to every other
-    # loop must remain unchanged (a tiny whole island/hole could be swallowed
-    # without a final contour intersection).
+    # Compare each contour's nesting using anchors from the matching version.
+    # Regularization can move a whole island/hole across another boundary
+    # without a final intersection; testing its old anchor would miss this.
     for i,(before,after) in enumerate(zip(original,facets)):
-        anchors=[loop[0] for j,loop in enumerate(original) if j!=i]
-        if anchors and not np.array_equal(contains([([before],'nonzero')],anchors),
-                                          contains([([after],'nonzero')],anchors)):return False
+        old_anchors=[loop[0] for j,loop in enumerate(original) if j!=i]
+        new_anchors=[loop[0] for j,loop in enumerate(facets) if j!=i]
+        if old_anchors and not np.array_equal(contains([([before],'nonzero')],old_anchors),
+                                              contains([([after],'nonzero')],new_anchors)):return False
     return True
+
+
+def band_connection_clear(boundary,i,j):
+    """The open connector between opposed edge centres must stay in material."""
+    p=(boundary.a[i]+boundary.b[i])/2;q=(boundary.a[j]+boundary.b[j])/2
+    delta=q-p;length_squared=delta@delta
+    if length_squared<1e-20:return False
+    edges=boundary.b-boundary.a;relative=boundary.a-p
+    determinant=cross(delta,edges);parallel=abs(determinant)<1e-12
+    safe=np.where(parallel,1,determinant)
+    along=cross(relative,edges)/safe;across=cross(relative,delta)/safe
+    others=np.ones(len(edges),bool);others[[i,j]]=False
+    intersects=(~parallel)&(along>1e-8)&(along<1-1e-8)&(across>=-1e-8)&(across<=1+1e-8)
+    if np.any(others&intersects):return False
+    collinear=parallel&(abs(cross(relative,delta))<1e-12)
+    start=relative@delta/length_squared;end=(boundary.b-p)@delta/length_squared
+    overlap=np.minimum(np.maximum(start,end),1-1e-8)-np.maximum(np.minimum(start,end),1e-8)
+    if np.any(others&collinear&(overlap>0)):return False
+    return bool(contains(boundary.shapes,[(p+q)/2])[0])
+
+
+def regularize_contours(loops,movement,max_angle):
+    """Simplify whole bands and near-square convex corners for rectangular parts.
+
+    Directions are shared locally, never snapped to world axes. Existing square
+    details retain their orientation. Matched vertices stay within both the
+    accuracy allowance and a quarter of nearby feature clearance; panels still
+    fit strictly inside the resulting continuous polygon.
+    """
+    if movement<=0 or max_angle<=0 or sum(map(len,loops))>256:return loops
+    boundary=Boundary(loops);vectors=boundary.b-boundary.a
+    lengths=np.linalg.norm(vectors,axis=1)
+    if np.any(lengths<1e-9):return loops
+    tangents=vectors/lengths[:,None]
+    normals=np.column_stack((-tangents[:,1],tangents[:,0]))
+    midpoints=(boundary.a+boundary.b)/2
+    angles=np.arctan2(tangents[:,1],tangents[:,0])
+    count=len(lengths);parent=np.arange(count)
+    previous=np.empty(count,int);following=np.empty(count,int);owners=np.empty(count,int)
+    offset=0
+    for owner,loop in enumerate(loops):
+        ids=np.arange(offset,offset+len(loop))
+        previous[ids]=np.roll(ids,1);following[ids]=np.roll(ids,-1);owners[ids]=owner
+        offset+=len(loop)
+
+    def group(i):
+        while parent[i]!=i:i=parent[i]
+        return i
+
+    constraints=[];protected=np.zeros(count,bool)
+    for i,j in enumerate(previous):
+        error=abs(math.asin(np.clip(tangents[i]@tangents[j],-1,1)))
+        if error<math.radians(2):protected[[i,j]]=True
+        # Broad corner changes are only useful on convex material corners.
+        # Squaring a concave junction instead can tilt the stem of a T shape.
+        if error<max_angle and cross(tangents[j],tangents[i])>0:
+            constraints.append((error,i,int(j)))
+    for i in range(count):
+        delta=midpoints-midpoints[i];gap=delta@normals[i]
+        start=(boundary.a-boundary.a[i])@tangents[i]
+        end=(boundary.b-boundary.a[i])@tangents[i]
+        overlap=np.minimum(lengths[i],np.maximum(start,end))-np.maximum(0,np.minimum(start,end))
+        ids=np.flatnonzero((np.sum(tangents*tangents[i],axis=1)<-math.cos(max_angle))
+            &(gap>1e-4)&(gap<.15)&(np.sum(-delta*normals,axis=1)>1e-4)
+            &(overlap>np.minimum(lengths,lengths[i])*.25))
+        for j in ids:
+            if j<=i:continue
+            if not band_connection_clear(boundary,i,j):continue
+            error=math.acos(np.clip(-tangents[i]@tangents[j],-1,1))
+            constraints.append((error,i,int(j)))
+            if error<math.radians(2):protected[[i,j]]=True
+
+    limits=np.full(count,movement)
+    def point_distance(point,a,b):
+        edge=b-a;t=np.clip(np.dot(point-a,edge)/np.dot(edge,edge),0,1)
+        return np.linalg.norm(point-a-edge*t)
+    for i in range(count):
+        for j in range(i+1,count):
+            if following[i]==j or following[j]==i:continue
+            if owners[i]==owners[j]:
+                if tangents[i]@tangents[j]>-.5:continue
+                projections=np.array([(boundary.a[j]-boundary.a[i])@tangents[i],
+                                      (boundary.b[j]-boundary.a[i])@tangents[i]])
+                if min(lengths[i],max(projections))-max(0,min(projections))<=0:continue
+            distance=min(point_distance(boundary.a[i],boundary.a[j],boundary.b[j]),
+                         point_distance(boundary.b[i],boundary.a[j],boundary.b[j]),
+                         point_distance(boundary.a[j],boundary.a[i],boundary.b[i]),
+                         point_distance(boundary.b[j],boundary.a[i],boundary.b[i]))
+            ids=[i,j,following[i],following[j]]
+            limits[ids]=np.minimum(limits[ids],distance*.25)
+
+    applied=angles.copy();vertices=boundary.a.copy()
+    for _,i,j in sorted(constraints):
+        first,second=group(i),group(j)
+        if first==second:continue
+        ids=np.array([k for k in range(count) if group(k) in (first,second)])
+        phase=np.angle(np.sum(lengths[ids]**2*np.exp(4j*angles[ids])))/4
+        desired=phase+np.round((angles[ids]-phase)/(math.pi/2))*(math.pi/2)
+        # Keep existing rectangular bars/cutouts from joining a slanted family.
+        allowance=np.where(protected[ids],math.radians(.25),max_angle)
+        if np.any(abs(desired-angles[ids])>allowance):continue
+        proposal=applied.copy();proposal[ids]=desired
+        directions=np.column_stack((np.cos(proposal),np.sin(proposal)))
+        before=directions[previous];after=directions
+        determinant=cross(before,after)
+        if np.any(abs(determinant)<1e-8):continue
+        t=cross(midpoints-midpoints[previous],after)/determinant
+        moved=midpoints[previous]+before*t[:,None]
+        if np.any(np.linalg.norm(moved-boundary.a,axis=1)>limits):continue
+        if np.any(np.linalg.norm(moved[following]-moved,axis=1)<lengths*.25):continue
+        parent[second]=first;applied=proposal;vertices=moved
+    output=[];offset=0
+    for loop in loops:
+        output.append(vertices[offset:offset+len(loop)].copy());offset+=len(loop)
+    return output if valid_facets(loops,output) else loops
 
 
 @lru_cache(maxsize=4)
@@ -776,6 +892,13 @@ def fit_svg(source,accuracy=50,max_parts=300):
     shapes,bounds,loops,cleanup=read_outline(source)
     levels=contour_plan(source,max_parts)
     plan=levels[accuracy] if levels is not None else None
+    if plan is not None and accuracy<100:
+        # Only the selected level is regularized; cached hierarchy arrays stay
+        # untouched. Lower accuracy allows whole corners/bands to become simpler.
+        strength=100-accuracy
+        adjusted=regularize_contours(plan['loops'],min(.016,strength*.0004),
+                                     math.radians(min(28,strength*.7)))
+        plan={**plan,'loops':adjusted}
     result=fit_outline(shapes,bounds,loops,cleanup,accuracy,max_parts,planned_contour=plan)
     # Use the shared-edge assembler at every accuracy. Accuracy selects the
     # polygon, not the algorithm; both assemblies use exactly that polygon.

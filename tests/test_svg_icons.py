@@ -312,7 +312,8 @@ class SvgTests(unittest.TestCase):
         self.assertLess(result['shape_change'],.05)
         lower=icon_fit.fit_svg(source,60,300)
         self.assertTrue(lower.get('faceted_fit'))
-        self.assertLessEqual(lower['part_count'],result['part_count'])
+        self.assertLessEqual(lower['part_count'],result['part_count']*.85)
+        self.assertLess(lower['shape_change'],.10)
         self.assertLess(sum(map(len,lower['_fill_loops'])),sum(map(len,result['_fill_loops'])))
         self.assertTrue(lower['seam_check_complete'])
 

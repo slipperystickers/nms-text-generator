@@ -30,6 +30,8 @@ assert bpy.ops.nms_icon.import_svg('EXEC_DEFAULT',filepath=str(source),simplify=
 result=icon_ui.analyze(settings)
 assert result['faceted_fit'] and result['part_count']<=240
 assert result['seam_check_complete'] and result['face_coverage']>=.995
+if settings.accuracy==60:
+    assert result['part_count']<=158 and result['shape_change']<.10
 root=icon_ui.create(bpy.context,icon_ui.config(settings),Matrix.Identity(4))
 parts=addon.managed_parts(root)
 assert len(parts)==result['part_count']
