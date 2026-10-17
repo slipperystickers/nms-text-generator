@@ -2,7 +2,7 @@ from .furby_errors import report_error
 bl_info = {
     'name': 'NMScribe for Blender Base Builder',
     'author': 'FuriousFurby',
-    'version': (2, 2, 15),
+    'version': (2, 2, 16),
     'blender': (5, 1, 0),
     'location': '3D View > Sidebar > NMS Text',
     'description': 'Native-panel text and SVG icons through NMS Base Builder; separate NMS Text tab',
@@ -194,12 +194,8 @@ def dependency_name():
     return backend.dependency_name(bpy.context.preferences.addons.keys())
 
 def get_builder(part_id=panels.DEFAULT):
-    b = backend.resolve(bpy.context.preferences.addons.keys())
-    index = b.get_asset_index()
-    missing = {panels.validate(part_id)} - set(index)
-    if missing:
-        raise ValueError('Base Builder is missing required native panel assets: ' + ', '.join(sorted(missing)))
-    return b
+    panels.validate(part_id)
+    return backend.resolve(bpy.context.preferences.addons.keys())
 
 def config_from_settings(settings):
     return {key:getattr(settings,key) for key in FIELDS}
@@ -318,8 +314,6 @@ def create_text(context, config, matrix=None, user_data=None):
                 context.view_layer.objects.active = None
                 if obj.get('ObjectID') != part_id or not obj.material_slots:
                     raise ValueError('Base Builder did not return the expected native panel and materials.')
-                if getattr(b,'requires_high_res',True) and not obj.data.name.startswith('NMS_HR_'):
-                    raise ValueError('The HD provider did not return the expected high-resolution native panel.')
                 sequence += 1
         context.view_layer.update()
         assert len(managed_parts(root)) == plan['part_count']
@@ -819,7 +813,7 @@ class NMSTEXT_PT_panel(bpy.types.Panel):
         donation.label(text='Corvette Class Builders (CCB)')
         brand.operator('wm.url_open',text='CCB / Traveller Toolkit',icon='URL').url='https://discord.gg/arbW3DvM5y'
         ui.prop(settings,'mode',expand=True)
-        ui.label(text='Native panel lettering - v2.2.15')
+        ui.label(text='Native panel lettering - v2.2.16')
         if settings.mode=='ICON':
             icon_ui.draw(ui,context)
             return
@@ -876,7 +870,7 @@ def cancel_preview_jobs_on_load(_):
 
 def register():
     from . import release_updates
-    release_updates.register('nmscribe', '2.2.15', 'NMS Text')
+    release_updates.register('nmscribe', '2.2.16', 'NMS Text')
     load_previews()
     for cls in CLASSES:
         bpy.utils.register_class(cls)

@@ -1,4 +1,11 @@
-NMScribe 2.2.15 makes reduced SVG accuracy save parts by simplifying whole bands and corners before assembling panels.
+NMScribe 2.2.16 fixes native panel generation with Base Builder Extended when the optional Detailed Proxy pack is not installed.
+
+- NMScribe now passes the panel part ID to Base Builder and accepts the native proxy returned by its part factory. Text and SVG icons can use the standard proxy fallback without an incorrect missing-asset error.
+- If Base Builder Extended is waiting for a Charon Forge compatibility choice, NMScribe shows a clear prompt to finish that choice first.
+- Blender 5.2.2 compatibility was checked with stock Base Builder 6.5.2 and Charon Forge 0.1.2 enabled in both add-on enable orders; text, SVG panels, and native export passed. This stock builder supplies the standard proxies. Base Builder Extended 18.1.79 was checked separately with Charon Forge disabled, with and without the Detailed Proxy pack.
+- This is a focused compatibility update to 2.2.15. It does not include decal development.
+
+The previous 2.2.15 SVG-fitting improvements remain included.
 
 - Nearby band edges share directions, and nearly square outside corners can become square enough for larger panels to fit. This avoids many small wedge and join fillers.
 - Existing rectangular details retain their orientation. Movement is bounded by the accuracy setting and nearby feature clearance; holes and separate islands are checked after the change. Full accuracy keeps the previous contour. Complex or unsafe contours retain the existing fallback fitter.

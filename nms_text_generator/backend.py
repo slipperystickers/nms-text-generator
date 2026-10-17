@@ -6,6 +6,7 @@ Resolve that active instance at call time so re-enabling either dependency
 does not leave text generation/export using a stale builder.
 """
 import importlib
+import sys
 from pathlib import Path
 
 HOST_NAMES = ('no_mans_sky_base_builder', 'official_nms_builder')
@@ -96,6 +97,9 @@ def resolve(enabled):
     host = dependency_name(enabled)
     if not host:
         raise ValueError("Enable No Man's Sky Base Builder in Preferences > Add-ons first.")
+    host_module = sys.modules.get(host)
+    if getattr(getattr(host_module, 'compatibility', None), '_pending', False):
+        raise ValueError('Finish the Base Builder Extended / Charon Forge compatibility choice before using NMScribe.')
     legacy_name = host + '.builder_v2'
     try:
         legacy = importlib.import_module(legacy_name)
@@ -106,7 +110,7 @@ def resolve(enabled):
     except ImportError as exc:
         raise ValueError('Base Builder could not load its native-part API: ' + str(exc)) from exc
     else:
-        if not all(hasattr(legacy, key) for key in ('add_part', 'Part', 'BUILDER', 'get_asset_index')):
+        if not all(hasattr(legacy, key) for key in ('add_part', 'Part', 'BUILDER')):
             raise ValueError('This Base Builder version lacks the required native-part API.')
         return legacy
 

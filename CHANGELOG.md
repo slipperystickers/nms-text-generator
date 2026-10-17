@@ -1,3 +1,9 @@
+## 2.2.16 - Use Base Builder's native panel fallback
+
+- Generate native panels by part ID through Base Builder, including when the optional Detailed Proxy pack is absent. Do not reject its standard proxy because an HD asset index is empty or its mesh name differs.
+- Wait for the Base Builder Extended / Charon Forge compatibility choice to finish before generating parts.
+- Preserve the existing text and SVG panel features. Decal development is not included.
+
 ## 2.2.15 - Simplify bands and corners for useful panel savings
 
 - At reduced accuracy, align nearby band edges and simplify nearly square outside corners together before fitting panels. This reduces wedge fillers instead of spending the contour savings on extra join repairs.

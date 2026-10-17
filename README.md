@@ -26,8 +26,10 @@ Builders (CCB)**. [Join CCB](https://discord.gg/arbW3DvM5y) and visit
 
 An independent Blender add-on with its own **NMS Text** sidebar. It calls
 No Man's Sky Base Builder's native-part functions; it does not modify that add-on.
-**Charon Forge is optional:** use it for HD models/textures, or use Base Builder's
-standard native models/materials without it. The previous combined add-on remains supported.
+**The Detailed Proxy pack is optional:** NMScribe asks Base Builder for a native
+part by ID and uses the proxy Base Builder returns. Base Builder Extended 18.1.79
+requires Charon Forge to be disabled; finish its compatibility choice before
+using NMScribe. Older supported Base Builder releases can have different Forge behavior.
 
 ## New in 2.2.8
 
@@ -58,13 +60,20 @@ Tested on **Blender 5.1.2 and 5.2.2 LTS / Windows**:
 | Base Builder | Charon Forge | Validation |
 | --- | --- | --- |
 | Combined 18.0.9 | Not required | Native text/icons and curve placement on Blender 5.1.2 |
+| Extended 18.1.79 | Disabled | Native Storage/Flat Panels and export with and without the Detailed Proxy pack on Blender 5.1.2 and 5.2.2 LTS |
 | Stock 6.5.2 | Disabled | Native text/icons and curve placement on Blender 5.2.2 |
 | Stock 6.5.2 | Enabled | Native text/icons and curve placement on Blender 5.2.2 |
+
+The 2.2.16 installer was also checked with stock Base Builder 6.5.2 and Charon
+Forge 0.1.2 enabled in Blender 5.2.2, in either add-on enable order. Text and SVG
+icons generated and exported. This stock Base Builder uses its standard proxy
+factory for NMScribe even while Charon Forge is enabled. Base Builder Extended
+18.1.79 and Charon Forge must not be enabled together.
 
 These version numbers belong to different release lines. The same sign settings,
 native item IDs, placements and part counts work in all three; switching providers
 does not rebuild saved signs automatically. Regenerate a sign to refresh its models.
-Required native assets are `BUILDFLATPANEL` and, for Storage mode, `STORAGEPANEL`.
+Required native part IDs are `BUILDFLATPANEL` and, for Storage mode, `STORAGEPANEL`.
 Other builds/operating systems are not yet verified. No game meshes or textures
 are bundled in this text add-on, and it never substitutes invented geometry.
 

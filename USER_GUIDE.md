@@ -96,15 +96,23 @@ if you no longer want it to follow the path.
 Tested with **Blender 5.1.2 and Blender 5.2.2 LTS for Windows** using:
 
 - The combined **18.0.8 Base Builder** line on both Blender versions, and **18.0.9** on Blender 5.2.2. Its native HD factory remains supported.
+- Base Builder Extended **18.1.79** with Charon Forge disabled, with and without its optional Detailed Proxy pack, on Blender 5.1.2 and 5.2.2 LTS.
 - Current stock **Base Builder 6.5.2**, both with Charon Forge disabled and enabled. Stock 6.5.2 does not expose the newer Forge hooks, so NMScribe uses its native standard factory even when Forge is enabled.
 - The newer standard-hook/Forge adapter remains supported, with active-builder resolution and lifecycle regressions. HD appearance requires a host that implements Forge's hooks; simply enabling Forge cannot add those hooks to stock 6.5.2.
 
-**Charon Forge is optional, not a requirement to generate or export text.** The
+**Charon Forge is not required to generate or export text.** Base Builder Extended
+18.1.79 requires it to be disabled; finish the compatibility choice before using
+NMScribe. Older supported Base Builder releases can have different Forge behavior. The
 version numbers above belong to different release lines. Native IDs, transforms,
 lettering designs and part counts are identical across these configurations; the
 Blender model/material display can differ. Standard models do not have Forge's HD
 textures. Required assets are `BUILDFLATPANEL` and, for Storage mode, `STORAGEPANEL`.
 Other operating systems and dependency builds are not yet verified.
+
+NMScribe 2.2.16 was checked from its clean installer with stock Base Builder
+6.5.2 and Charon Forge 0.1.2 enabled in Blender 5.2.2. Both enable orders worked;
+text and SVG panels generated and exported. In this stock setup NMScribe uses
+Base Builder's standard proxy factory while Charon Forge is enabled.
 
 Base Builder must be installed separately. The text generator does not contain
 game meshes, textures, font files, or Base Builder's own code. You do not need
@@ -113,7 +121,7 @@ system fonts, an online account, or additional Python packages to use the genera
 ### Installation steps
 
 1. Install and enable the compatible **No Man's Sky Base Builder** first. With the new
-   split release, optionally enable **Charon Forge** too for HD models/textures.
+   split release, check its compatibility guidance before enabling **Charon Forge**.
 2. Download the installable **NMS_Text_Generator_<version>.zip** from the project's
    Releases page. GitHub's automatic Source code ZIP is not the installer.
 3. Open **Edit > Preferences > Add-ons** in Blender.
@@ -467,7 +475,7 @@ cursor position, then Generate New Text. Each sign has its own collection/contro
 | SVG slider changes only the preview | Select the icon, load its settings, then choose Update Selected Icon. Generate New Icon creates another copy. |
 | Enable NMS Base Builder first | Install/enable the dependency in this same Blender installation. |
 | Missing builder_v2 | Update NMS Text to 1.6.1 or newer for the split Base Builder release. Charon Forge is optional. |
-| Missing native panel assets | Repair/reinstall the compatible Base Builder, or Charon Forge if using HD mode. The generator will not invent substitute geometry. |
+| Missing native panel assets | Update NMScribe to 2.2.16. It now asks Base Builder to create the part directly and accepts its standard proxy fallback when the Detailed Proxy pack is absent. If Base Builder itself cannot create the part, repair that installation. |
 | Style changes but panels do not | Auto-switch must be ON; use Select Parts for exactly one sign, excluding unrelated objects. In the edit dialog, click OK. |
 | Typed text did not update the sign | Only Font and Panel type auto-switch. Use Edit NMS Text or explicit Replace for other fields. |
 | Dotted connection lines clutter the text | In Viewport Overlays > Objects, uncheck Relationship Lines. Keep the parent control intact. |
